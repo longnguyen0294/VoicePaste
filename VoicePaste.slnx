@@ -1,0 +1,10 @@
+<Solution>
+  <Project Path="src/VoicePaste.App/VoicePaste.App.csproj" />
+  <Project Path="src/VoicePaste.Core/VoicePaste.Core.csproj" />
+  <Project Path="src/VoicePaste.Providers.OpenAI/VoicePaste.Providers.OpenAI.csproj" />
+  <Project Path="src/VoicePaste.Windows/VoicePaste.Windows.csproj" />
+  <Project Path="tests/VoicePaste.App.Tests/VoicePaste.App.Tests.csproj" />
+  <Project Path="tests/VoicePaste.Core.Tests/VoicePaste.Core.Tests.csproj" />
+  <Project Path="tests/VoicePaste.Providers.OpenAI.Tests/VoicePaste.Providers.OpenAI.Tests.csproj" />
+  <Project Path="tests/VoicePaste.Windows.Tests/VoicePaste.Windows.Tests.csproj" />
+</Solution>

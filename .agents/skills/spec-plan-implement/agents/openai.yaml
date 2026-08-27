@@ -1,0 +1,4 @@
+interface:
+  display_name: "VoicePaste Spec Plan Implement"
+  short_description: "Plan and implement VoicePaste with traceability"
+  default_prompt: "Use $spec-plan-implement to plan and implement this VoicePaste change from the SRS, including tests and traceability evidence."

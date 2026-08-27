@@ -1,0 +1,4 @@
+interface:
+  display_name: "Spec Plan Implement"
+  short_description: "Repository workflow with enforced traceability"
+  default_prompt: "Use $spec-plan-implement to plan and implement this repository change while synchronizing specs, work items, code, tests, and traceability evidence."

@@ -1,0 +1,25 @@
+<Window x:Class="VoicePaste.App.UI.StatusOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="260"
+        Height="56"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Focusable="False"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        WindowStyle="None">
+    <Border Padding="14,10"
+            Background="#E6222222"
+            BorderBrush="#55FFFFFF"
+            BorderThickness="1"
+            CornerRadius="10"
+            IsHitTestVisible="False">
+        <StackPanel Orientation="Horizontal">
+            <Ellipse x:Name="StateIndicator" Width="12" Height="12" Margin="0,0,10,0" Fill="#5FD068" />
+            <TextBlock x:Name="StateText" Foreground="White" FontSize="15" VerticalAlignment="Center" Text="Listening" />
+        </StackPanel>
+    </Border>
+</Window>
+
