@@ -29,6 +29,22 @@ record below or have exact executed evidence in `requirements-traceability.md`.
   Windows 10/11 compatibility,
   accessibility, performance, or long-duration manual result has been recorded.
 
+### 1.2 Clipboard fallback change evidence — 2026-08-31
+
+- The insertion slice compiled successfully in an equivalent `net9.0-windows10.0.19041.0`
+  Windows Desktop compile-check project, with 0 warnings and 0 errors.
+- A standalone Unicode event smoke check passed for the Vietnamese sample and verified exact
+  UTF-16 key-down/key-up pairs.
+- The standard solution build/test remains pending because this workstation has SDK `9.0.301`
+  while the solution targets .NET 10; no MSTest result is claimed for the new test until SDK 10 is available.
+
+### 1.3 Application icon evidence — 2026-08-31
+
+- `VoicePaste.ico` was visually inspected and loaded successfully through `System.Drawing.Icon`.
+- The ICO contains explicit `16x16`, `24x24`, `32x32`, `48x48`, `64x64`, and `256x256` entries.
+- Executable/tray project wiring was inspected; final Release build verification remains blocked by the
+  installed SDK mismatch recorded above.
+
 ## 2. Unit test catalog
 
 | ID | Test area | Planned assertions | Requirements |
@@ -47,9 +63,10 @@ record below or have exact executed evidence in `requirements-traceability.md`.
 | UT-STT-003 | Retry policy | Retryable failures retain audio for no more than 15 minutes; terminal/expiry paths delete it | FR-025, FR-036, NFR-012 |
 | UT-TARGET-001 | Target policy | Process identity and foreground state are revalidated; stale, changed, background, or elevated targets fall back without activation | FR-040, FR-042, FR-047–048 |
 | UT-CLIP-001 | Clipboard ownership | Restore only when private token, sequence, and owner still match the lease | FR-045–046 |
-| UT-CLIP-003 | Safe snapshot gate | Unsupported, delayed-rendered, locked, or over-16-MiB clipboard content is not overwritten and returns manual fallback | FR-045–047 |
+| UT-CLIP-003 | Safe snapshot gate | Unsupported, delayed-rendered, locked, or over-16-MiB clipboard content is not overwritten; direct Unicode fallback is attempted and manual fallback remains available | FR-045–047 |
 | UT-CLIP-002 | Bounded retry | Busy clipboard retries are bounded and return typed failure | FR-047, NFR-014 |
 | UT-INSERT-001 | Paste decision | Only valid non-empty text reaches insertion; failure retains manual copy | FR-037, FR-042–044, FR-047 |
+| UT-INSERT-002 | Unsafe clipboard insertion | Direct Unicode input emits exact UTF-16 key-down/key-up pairs without adding or changing clipboard formats | FR-043–047 |
 | UT-STATUS-001 | Actionable error presentation | Internal message/diagnostic codes are hidden; target, network, privilege, and clipboard errors include a recovery action | FR-048, FR-054 |
 | UT-CRED-001 | Credential list filtering | Search credential metadata case-insensitively, mark the active reference, and never add a secret preview | FR-062, NFR-024 |
 | UT-STT-004 | Mixed-language orchestration | Ordered Vietnamese-English segments are sent/combined without manual language changes or lost transitions | FR-031, FR-039 |
@@ -62,13 +79,14 @@ record below or have exact executed evidence in `requirements-traceability.md`.
 | ID | Test area | Environment and evidence | Requirements |
 |---|---|---|---|
 | IT-LIFE-001 | Application lifecycle | WPF harness verifies close-to-tray, pause, explicit exit, and Raw Input registration disposal | FR-002–005, FR-016 |
+| IT-ICON-001 | Application icon packaging | Icon asset loads, contains the required multi-resolution entries, and is referenced by the executable/tray project | FR-003, FR-005, NFR-034 |
 | IT-AUDIO-001 | Audio capture | Test audio source and Windows device adapter verify ordered incremental capture, bounded buffers/chunks, 300 ms minimum, release/cancel stop conditions, 256 MiB storage reserve, and device errors | FR-020–026, NFR-002, NFR-007, NFR-015 |
 | IT-STT-001 | Provider | Mocked HTTP/provider responses verify languages, mixed-language segmentation, timeouts, and errors | FR-030–039, NFR-010 |
 | IT-STT-002 | Provider live smoke | Explicit test environment verifies Vietnamese, English, mixed Vietnamese-English, long-recording handling, and provider disclosure | FR-031, FR-034, FR-039, NFR-022 |
 | IT-STT-003 | Provider corpus gate | Frozen-corpus runner emits per-utterance/aggregate WER, English keyword recall, and complete-segment omission evidence for the pinned provider/model | FR-031, FR-034, FR-039, NFR-006 |
 | IT-STT-004 | Long provider pipeline | Synthetic 60-minute content is segmented when required, submitted, and recombined with no missing or reordered segment | FR-023, FR-030, NFR-007 |
-| IT-CLIP-001 | Clipboard | Controlled STA harness verifies <=16 MiB supported snapshot, private token/sequence/owner checks, external mutation, restore, unsafe-snapshot fallback, and lock retries | FR-043–047, NFR-014 |
-| IT-PASTE-001 | Controlled target | Test window verifies Unicode insertion only while captured identity remains foreground; closure, focus change, stale handle, and elevation use manual fallback without activation | FR-040–048 |
+| IT-CLIP-001 | Clipboard | Controlled STA harness verifies <=16 MiB supported snapshot, private token/sequence/owner checks, external mutation, restore, unsafe-snapshot direct-Unicode fallback, and lock retries | FR-043–047, NFR-014 |
+| IT-PASTE-001 | Controlled target | Test window verifies clipboard or direct-Unicode insertion only while captured identity remains foreground; closure, focus change, stale handle, and elevation use manual fallback without activation | FR-040–048 |
 | IT-CLEAN-001 | Startup cleanup | Seeded expired recording is removed; valid retry lease is preserved | FR-025, FR-036, NFR-012 |
 | IT-CRED-001 | Credential protection and management | Current-user round trip, VoicePaste-scoped metadata enumeration, selected delete, and cleanup succeed; plaintext settings/logs and list descriptors contain no secret | FR-062, NFR-023–024 |
 | IT-SET-001 | Settings persistence | Save/reload/migrate/reset round trips across app restarts | FR-060–065, FR-070 |
@@ -82,7 +100,7 @@ credentials and non-sensitive audio fixtures.
 |---|---|---|---|
 | MAN-APP-001 | Launch, close settings, tray actions, and exit | App remains in tray until Exit and reports state | FR-001–005 |
 | MAN-FOCUS-001 | Record, then retain or change foreground app before paste | Overlay never activates; auto-paste occurs only while the captured target remains foreground; changed focus produces manual fallback | FR-040–042, FR-047, FR-051–052 |
-| MAN-NOTEPAD-001 | Vietnamese/English dictation in Notepad | Correct Unicode insertion and conditional clipboard restore | FR-031, FR-042–046 |
+| MAN-NOTEPAD-001 | Vietnamese/English dictation in Notepad | Correct Unicode insertion through clipboard or direct-Unicode fallback and conditional clipboard restore | FR-031, FR-042–046 |
 | MAN-PTT-001 | Hold Right Ctrl for 10 minutes on a real microphone | Capture remains active until release, Right Ctrl events remain available to the foreground app, then audio transcribes; Left Ctrl does not trigger | FR-017–018, FR-023, NFR-016 |
 | MAN-MIX-001 | Mixed Vietnamese-English utterance in one recording | Both languages are recognized in sequence without changing language settings; result is consistent with the corpus gate rather than used as its substitute | FR-039, NFR-006 |
 | MAN-WORD-001 | Dictation in Microsoft Word | Correct insertion and no focus theft | NFR-031 |
@@ -91,7 +109,7 @@ credentials and non-sensitive audio fixtures.
 | MAN-IDE-001 | Visual Studio and VS Code | Correct Unicode insertion into editors | NFR-031 |
 | MAN-ELEV-001 | Target runs elevated | No injection attempt succeeds silently; actionable notice appears | FR-048 |
 | MAN-DEVICE-001 | Microphone removed/denied/exclusive | App remains alive, releases state, and gives recovery action | FR-026, FR-054 |
-| MAN-CLIP-001 | Text/image/file/rich clipboard plus external copy race | User data is preserved; external writes are never overwritten | FR-045–047 |
+| MAN-CLIP-001 | Text/image/file/rich/delayed clipboard plus external copy race | User data is preserved; unsafe clipboard is not overwritten, direct-Unicode fallback inserts when accepted, and external writes are never overwritten | FR-045–047 |
 | MAN-SESSION-001 | Rapid presses, cancel, lock, sleep, session change, input-device removal, and app exit | No overlap/leak or indefinite capture; every terminal path returns to `Idle` | FR-014–016, NFR-011–013, NFR-016 |
 | MAN-WIN-001 | Launch/capture/paste on Windows 11 x64 and Windows 10 22H2 x64 build 19045 | Core MVP flow succeeds on both the primary and compatibility baseline | FR-001, NFR-030 |
 | MAN-DPI-001 | Multiple monitors at 100%, 150%, and 200% | Overlay remains visible, non-blocking, and correctly scaled | NFR-034 |

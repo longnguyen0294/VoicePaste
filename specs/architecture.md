@@ -75,7 +75,7 @@ VoicePaste.Providers.* ───────┘
 | Component | Responsibility | Primary requirements |
 |---|---|---|
 | `ApplicationLifetimeCoordinator` | Start minimized, keep process alive after settings window closes, pause, and exit cleanly | FR-001–005 |
-| `TrayIconController` | Open Settings, Pause, Exit, and expose current state | FR-003, FR-005 |
+| `TrayIconController` | Load the branded multi-resolution app icon, open Settings, Pause, Exit, and expose current state through the tooltip | FR-003, FR-005 |
 | `IGlobalHotkeyService` | Observe pass-through press/release through Raw Input, distinguish Right Ctrl, reconcile interruptions, and release unmanaged resources | FR-010–018, NFR-016 |
 | `IForegroundWindowTracker` | Capture and validate the intended target window | FR-040, FR-048 |
 | `IAudioCaptureService` | Enumerate microphones and stream user-held push-to-talk audio through bounded buffers to chunked temporary storage without an elapsed-time cutoff | FR-020–026, NFR-002, NFR-007, NFR-015 |
@@ -120,8 +120,9 @@ VoicePaste.Providers.* ───────┘
 9. When the target is eligible, the clipboard service safely materializes a supported-format snapshot
    no larger than 16 MiB, writes the transcript plus a private lease token, records clipboard sequence
    and owner identity, and sends the paste command. If a safe snapshot is impossible because content
-   is delayed-rendered, unsupported, locked after bounded retries, or too large, automatic paste is
-   skipped and the transcript remains available.
+   is delayed-rendered, unsupported, locked after bounded retries, or too large, the insertion service
+   revalidates the target and sends direct Unicode input without modifying the clipboard. If that
+   fallback fails, the transcript remains available for manual copy/retry.
 10. After a bounded paste-settle interval, clipboard restoration occurs only if the private token,
     sequence number, and owner identity still match. User or third-party clipboard changes always win.
 11. Temporary audio and session-owned resources are released. On a retryable transcription failure,

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">VoicePaste</title>
+  <desc id="desc">A microphone transforms into a text insertion caret.</desc>
+  <defs>
+    <linearGradient id="surface" x1="38" y1="26" x2="218" y2="232" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#123F67"/>
+      <stop offset="1" stop-color="#0B263F"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="46" y1="58" x2="196" y2="208" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#B9F5FF"/>
+      <stop offset="1" stop-color="#5DD6F2"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#061525" flood-opacity="0.34"/>
+    </filter>
+  </defs>
+
+  <rect x="16" y="16" width="224" height="224" rx="56" fill="url(#surface)"/>
+
+  <g filter="url(#shadow)" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="60" y="48" width="78" height="119" rx="39" fill="#F6FCFF"/>
+    <path d="M39 108v9c0 43 31 76 70 76s70-33 70-76v-9" fill="none" stroke="url(#accent)" stroke-width="14"/>
+    <path d="M109 193v25M83 218h52" fill="none" stroke="#F6FCFF" stroke-width="13"/>
+
+    <path d="M151 124h47M181 103l22 21-22 21" fill="none" stroke="url(#accent)" stroke-width="13"/>
+    <path d="M218 86v76M207 86h22M207 162h22" fill="none" stroke="#F6FCFF" stroke-width="10"/>
+  </g>
+</svg>

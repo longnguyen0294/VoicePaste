@@ -225,8 +225,10 @@ public sealed record ClipboardLease(
 
 Insertion returns `OperationResult<InsertionOutcome>`. The clipboard service may retain an in-memory
 snapshot only for safely materialized supported formats up to 16 MiB. Delayed-rendered, unsupported,
-larger, or persistently locked content causes auto-paste to be skipped before the clipboard is
-overwritten. The snapshot is session-scoped, never logged, and released after restore or expiry.
+larger, or persistently locked content is never overwritten; the insertion service may instead send
+direct Unicode input to the already validated foreground target. If direct input is unavailable or
+fails, the transcript is retained for manual copy/retry. The snapshot is session-scoped, never logged,
+and released after restore or expiry.
 Restoration is allowed only when the private token, current sequence number, and owner window all
 match the lease and prove that no later user or application write occurred.
 

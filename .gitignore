@@ -4,6 +4,19 @@ bin/
 obj/
 TestResults/
 artifacts/
+release/
+publish/
+out/
+
+# Packaging and release archives
+*.nupkg
+*.snupkg
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+*.zip
+
 *.user
 *.suo
 

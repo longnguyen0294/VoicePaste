@@ -103,9 +103,21 @@ public sealed partial class WindowsClipboardService : IDisposable
         var values = new List<KeyValuePair<string, object?>>();
         foreach (var format in dataObject.GetFormats(autoConvert: false))
         {
-            values.Add(new KeyValuePair<string, object?>(
-                format,
-                dataObject.GetData(format, autoConvert: false)));
+            try
+            {
+                values.Add(new KeyValuePair<string, object?>(
+                    format,
+                    dataObject.GetData(format, autoConvert: false)));
+            }
+            catch (Exception exception) when (
+                exception is COMException or ExternalException or InvalidOperationException)
+            {
+                return OperationResult.Failure<ClipboardSnapshot>(new OperationError(
+                    ErrorCategory.ClipboardBusy,
+                    "clipboard.snapshot_unavailable",
+                    IsRetryable: true,
+                    exception.GetType().Name));
+            }
         }
 
         return ClipboardSnapshotPolicy.Create(values);

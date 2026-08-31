@@ -17,6 +17,10 @@ public static class OperationErrorPresenter
                 "The clipboard contains a format that cannot be restored safely. Copy plain text or use manual copy.",
             "clipboard.snapshot_too_large" =>
                 "The clipboard snapshot is too large to restore safely. Use manual copy.",
+            "clipboard.snapshot_unavailable" =>
+                "The clipboard contains data that cannot be read safely. Use manual copy if direct insertion fails.",
+            "paste.unicode_send_input_failed" =>
+                "The target app did not accept direct Unicode insertion. Use manual copy.",
             "target.voicepaste_window" =>
                 "Switch to an editable field in another application, then hold Right Ctrl to dictate.",
             _ => operationError.Category switch

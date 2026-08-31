@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.IO;
 using VoicePaste.Core;
 using Forms = System.Windows.Forms;
 
@@ -8,6 +9,7 @@ internal sealed class TrayIconController : IDisposable
 {
     private readonly Forms.NotifyIcon _notifyIcon;
     private readonly Forms.ToolStripMenuItem _pauseItem;
+    private readonly Icon _appIcon;
 
     public TrayIconController(Action openSettings, Action togglePause, Action exit)
     {
@@ -23,10 +25,11 @@ internal sealed class TrayIconController : IDisposable
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(exitItem);
 
+        _appIcon = LoadAppIcon();
         _notifyIcon = new Forms.NotifyIcon
         {
             ContextMenuStrip = menu,
-            Icon = SystemIcons.Information,
+            Icon = _appIcon,
             Text = "VoicePaste — Idle",
             Visible = true,
         };
@@ -59,6 +62,15 @@ internal sealed class TrayIconController : IDisposable
     {
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
+        _appIcon.Dispose();
+    }
+
+    private static Icon LoadAppIcon()
+    {
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "VoicePaste.ico");
+        return File.Exists(iconPath)
+            ? new Icon(iconPath)
+            : (Icon)SystemIcons.Application.Clone();
     }
 
 }

@@ -39,4 +39,16 @@ public sealed class OperationErrorPresenterTests
         StringAssert.Contains(message, expectedRecoveryText);
         Assert.IsFalse(message.Contains("unmapped.test_key", StringComparison.Ordinal));
     }
+
+    [TestMethod]
+    public void UtStatus001DirectUnicodeFailureShowsManualRecovery()
+    {
+        var message = OperationErrorPresenter.ToUserMessage(new OperationError(
+            ErrorCategory.TargetUnavailable,
+            "paste.unicode_send_input_failed",
+            IsRetryable: true));
+
+        StringAssert.Contains(message, "direct Unicode insertion");
+        StringAssert.Contains(message, "manual copy");
+    }
 }

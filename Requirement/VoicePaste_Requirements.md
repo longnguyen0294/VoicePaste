@@ -1,7 +1,7 @@
 # VoicePaste — Software Requirements Specification
 
-**Document version:** 1.3  
-**Status:** Draft for MVP  
+**Document version:** 1.4
+**Status:** Draft for MVP
 **Target platform:** 64-bit Windows 11; Windows 10 22H2 (build 19045) compatibility target  
 **Suggested stack:** C# / .NET 10 LTS / WPF (`net10.0-windows`)
 
@@ -111,11 +111,11 @@ The initial version focuses on user-controlled push-to-talk dictation rather tha
 | FR-040 | The application shall capture the intended target window and process identity at recording start, before displaying any UI that might change focus. | Must |
 | FR-041 | The listening and processing indicators shall not take keyboard focus. | Must |
 | FR-042 | After successful transcription, the application shall insert the result only when the target captured at recording start is still valid and foreground. VoicePaste shall never activate or steal focus from the target to force automatic paste. | Must |
-| FR-043 | The primary insertion mechanism shall use the Windows clipboard and a simulated paste command. | Must |
+| FR-043 | The primary insertion mechanism shall use the Windows clipboard and a simulated paste command. If the clipboard cannot be safely read or written, the application may use direct Unicode `SendInput` as a non-clipboard fallback while preserving target validation and focus rules. | Must |
 | FR-044 | The application shall preserve Unicode characters and Vietnamese diacritics. | Must |
 | FR-045 | The application shall attempt to restore a safely materialized previous clipboard snapshot after paste completion. | Should |
 | FR-046 | Clipboard restoration shall occur only while VoicePaste still owns the write, verified by a private clipboard token, sequence number, and owner identity; it shall never overwrite a later external clipboard change. | Must |
-| FR-047 | If the target is no longer foreground, clipboard content cannot be safely snapshotted, or automatic paste otherwise fails, VoicePaste shall not force insertion and the transcript shall remain available for manual copy and retry-paste. | Must |
+| FR-047 | If the target is no longer foreground, VoicePaste shall not force activation or insertion. If clipboard content cannot be safely snapshotted, VoicePaste shall first attempt direct Unicode insertion without modifying the clipboard; when that fallback is unavailable or fails, the transcript shall remain available for manual copy and retry-paste. | Must |
 | FR-048 | The application shall notify the user when it cannot inject input into a higher-privilege target application. | Must |
 
 ### 6.6 Status and notifications
@@ -309,6 +309,7 @@ public sealed record OperationFailure<T>(OperationError Error) : OperationResult
 - The target application runs as Administrator while VoicePaste does not.
 - The clipboard is locked.
 - The clipboard contains an image, file list, rich text, or a large object before insertion.
+- The clipboard contains delayed-rendered or application-specific formats before insertion; direct Unicode insertion must not overwrite that clipboard.
 - The user copies something else while VoicePaste is transcribing or pasting.
 - The network disconnects or the provider times out.
 - The provider returns an empty or whitespace-only transcript.
@@ -325,7 +326,7 @@ The MVP is considered complete when all the following are true:
 3. Holding **Right Ctrl** by default starts recording, recording continues without a fixed application timeout while the key remains held, and releasing it stops recording.
 4. The status indicator never steals focus from the target application.
 5. Vietnamese, English, and mixed Vietnamese-English speech within one recording can be transcribed through at least one provider without manually switching language between segments, and that pipeline passes `NFR-006` on the versioned corpus.
-6. The resulting Unicode text is pasted at the active cursor position in Notepad, Word, Teams, Chrome/Edge, and Visual Studio or VS Code only while the target captured at recording start remains foreground; otherwise a manual copy/retry path is provided without focus theft.
+6. The resulting Unicode text is inserted at the active cursor position in Notepad, Word, Teams, Chrome/Edge, and Visual Studio or VS Code through clipboard paste or direct Unicode fallback, only while the target captured at recording start remains foreground; otherwise a manual copy/retry path is provided without focus theft.
 7. Empty or failed transcriptions are not pasted.
 8. The application recovers from microphone, network, provider, and clipboard errors without crashing.
 9. Temporary audio is deleted after completion, cancellation, or expiry.
@@ -333,7 +334,7 @@ The MVP is considered complete when all the following are true:
 11. The app prevents overlapping dictation sessions.
 12. When automatic paste fails, the user can manually copy or retry the transcript.
 13. A synthetic 60-minute capture and a manual 10-minute microphone hold satisfy `NFR-007` without an elapsed-time stop.
-14. Unsafe clipboard snapshots and external clipboard mutations preserve the user's clipboard and fall back without data loss.
+14. Unsafe clipboard snapshots and external clipboard mutations preserve the user's clipboard; direct Unicode fallback is used when possible and manual copy/retry remains available otherwise.
 
 ## 12. Testing requirements
 

@@ -113,6 +113,9 @@ Launch the published application:
   segmentation is not a recording-duration limit.
 - Automatic paste proceeds only when the original process/window is still foreground and has a
   compatible integrity level.
+- If the clipboard contains browser-specific, rich, delayed-rendered, or otherwise unsafe formats,
+  VoicePaste inserts Unicode text directly without overwriting that clipboard, then falls back to
+  manual copy if the target does not accept direct input.
 - Clipboard restoration occurs only if the VoicePaste lease token, sequence number, and owner remain
   unchanged. Existing clipboard data is replaced only when it can be safely materialized within
   16 MiB.
