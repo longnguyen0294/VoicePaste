@@ -110,7 +110,10 @@ internal sealed class AppHost : IAsyncDisposable
 
     public void Start(bool showSettings = false)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(AppHost));
+        }
         _hotkeyService.Pressed += OnHotkeyPressed;
         _hotkeyService.Released += OnHotkeyReleased;
         _hotkeyService.Interrupted += OnHotkeyInterrupted;

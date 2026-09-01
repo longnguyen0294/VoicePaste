@@ -16,8 +16,9 @@ The design optimizes for:
 - testability without requiring real Windows devices or a live provider in unit tests;
 - privacy-safe defaults.
 
-The implementation baseline is C# on .NET 10 LTS, targeting `net10.0-windows` with the SDK pinned by
-`global.json`. WPF is intentionally selected for the tray-oriented desktop shell and mature Win32
+The implementation baseline is C# targeting .NET 6.0.36 (`net6.0-windows`) with the repository-local
+SDK pinned by `global.json`. The Windows x64 build is self-contained. .NET 6 is out of support; this
+user-directed compatibility baseline is recorded in DEC-001. WPF is intentionally selected for the tray-oriented desktop shell and mature Win32
 interop. `VoicePaste.App` uses `System.Windows.Forms.NotifyIcon` behind an adapter for the MVP tray
 icon; domain code remains independent of both WPF and Windows Forms. The first concrete provider is
 the provisional `VoicePaste.Providers.OpenAI` adapter for `gpt-transcribe`; its selection remains
@@ -99,7 +100,7 @@ VoicePaste.Providers.* ───────┘
 4. The state changes from `Idle` to `Listening`; audio capture starts off the UI thread and the overlay
    displays without activation.
 5. Capture continues while the accepted push-to-talk key remains held. Centrally pinned
-   `NAudio.Wasapi` `3.0.1` provides WASAPI capture behind the Windows audio adapter. Audio callbacks
+   `NAudio.Wasapi` `2.2.1` provides WASAPI capture behind the Windows audio adapter. Audio callbacks
    feed a bounded channel and a single writer emits
    sequential chunks of at most five minutes into application-owned temporary storage rather than
    accumulating the recording in memory. A release edge stops capture; cancellation, the 300 ms

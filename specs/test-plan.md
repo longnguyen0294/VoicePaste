@@ -35,15 +35,26 @@ record below or have exact executed evidence in `requirements-traceability.md`.
   Windows Desktop compile-check project, with 0 warnings and 0 errors.
 - A standalone Unicode event smoke check passed for the Vietnamese sample and verified exact
   UTF-16 key-down/key-up pairs.
-- The standard solution build/test remains pending because this workstation has SDK `9.0.301`
-  while the solution targets .NET 10; no MSTest result is claimed for the new test until SDK 10 is available.
+- This evidence has been superseded by the .NET 6 retarget verification recorded below.
 
 ### 1.3 Application icon evidence — 2026-08-31
 
 - `VoicePaste.ico` was visually inspected and loaded successfully through `System.Drawing.Icon`.
 - The ICO contains explicit `16x16`, `24x24`, `32x32`, `48x48`, `64x64`, and `256x256` entries.
-- Executable/tray project wiring was inspected; final Release build verification remains blocked by the
-  installed SDK mismatch recorded above.
+- Executable/tray project wiring was inspected; the .NET 6 Release build verification is recorded below.
+
+### 1.4 .NET 6 retarget evidence — 2026-09-01
+
+- All production and test projects target `net6.0` or `net6.0-windows10.0.19041.0`; the App builds
+  self-contained for `win-x64` and resolves `Microsoft.NETCore.App` and
+  `Microsoft.WindowsDesktop.App` 6.0.36.
+- The repository-local SDK 10.0.302 successfully built the Release solution after replacing the
+  .NET 9-only `NAudio.Wasapi` 3.0.1 package with 2.2.1 and replacing .NET 7+ interop/guard APIs.
+- The deterministic suite passed 35/35 tests: 8 Core, 12 Windows, 9 mocked OpenAI provider, and 6
+  App tests. This does not replace the pending physical-device, provider, paste-target, performance,
+  accessibility, or Windows compatibility checks.
+- A Release self-contained `win-x64` publish completed and its runtime configuration embeds
+  `Microsoft.NETCore.App` and `Microsoft.WindowsDesktop.App` 6.0.36.
 
 ## 2. Unit test catalog
 

@@ -35,7 +35,7 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
 
     public async Task<bool> StartListeningAsync(CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ThrowIfDisposed();
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -90,7 +90,7 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
 
     public async Task CompleteAsync(CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ThrowIfDisposed();
         SessionContext session;
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -208,7 +208,7 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
 
     public async Task CancelAsync(CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ThrowIfDisposed();
         SessionContext session;
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -322,6 +322,14 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
         _state = next;
         StateChanged?.Invoke(this, new SessionStateChangedEventArgs(previous, next, error));
         await _statusSink.PublishAsync(next, error, cancellationToken).ConfigureAwait(false);
+    }
+
+    private void ThrowIfDisposed()
+    {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(DictationSessionCoordinator));
+        }
     }
 
     private sealed record SessionContext(

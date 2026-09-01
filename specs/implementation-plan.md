@@ -19,7 +19,7 @@ protect credentials, and maintain requirement-to-code-to-test traceability.
 | ID | Work item | Main deliverables | Requirements | Depends on | Status |
 |---|---|---|---|---|---|
 | VP-000 | Establish specification baseline | `specs/` architecture, data model, plan, tests, decisions, traceability | All MVP FR/NFR | — | Complete |
-| VP-001 | Bootstrap repository and solution | Git metadata, `.gitignore`, pinned .NET 10 `global.json`, `net10.0-windows` solution, build properties, project skeletons | FR-001, NFR-030 | DEC-001, DEC-016 | Complete |
+| VP-001 | Bootstrap repository and solution | Git metadata, `.gitignore`, repository-local build SDK pinned in `global.json`, .NET 6.0.36 `net6.0-windows` solution, build properties, project skeletons | FR-001, NFR-030 | DEC-001, DEC-016 | Complete |
 | VP-002 | Implement core contracts and state machine | Domain records, interfaces, session states, transitions, typed errors | FR-014, FR-030, FR-033, FR-050, NFR-010–013 | VP-001 | Complete |
 | VP-003 | Add core unit-test foundation | State, concurrency, validation, normalization, and error-mapping tests | FR-014, FR-037, FR-038, FR-050, NFR-011, NFR-013 | VP-002 | Complete |
 | VP-004 | Implement lifecycle and tray shell | WPF host, branded multi-resolution executable/tray icon, tray actions, pause/exit, state tooltip, clean shutdown | FR-001–005, FR-016 | VP-001, VP-002 | In progress — branded icon and shell/build/smoke exist; sign-in startup and manual tray checks remain |

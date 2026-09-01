@@ -36,7 +36,10 @@ public sealed partial class RawInputHotkeyService : IGlobalHotkeyService
 
     public void Start(HotkeyGesture gesture)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(RawInputHotkeyService));
+        }
         if (HotkeyBindingValidator.Validate(gesture) is OperationFailure<HotkeyGesture> failure)
         {
             throw new ArgumentException(failure.Error.UserMessageKey, nameof(gesture));
@@ -84,7 +87,7 @@ public sealed partial class RawInputHotkeyService : IGlobalHotkeyService
                 UsagePage = 0x01,
                 Usage = 0x06,
                 Flags = RawInputDeviceRemove,
-                Target = nint.Zero,
+                Target = IntPtr.Zero,
             },
         };
         NativeMethods.RegisterRawInputDevices(
@@ -159,7 +162,7 @@ public sealed partial class RawInputHotkeyService : IGlobalHotkeyService
         if (NativeMethods.GetRawInputData(
                 rawInputHandle,
                 RawInputCommandInput,
-                nint.Zero,
+                IntPtr.Zero,
                 ref size,
                 headerSize) == uint.MaxValue || size == 0)
         {
@@ -290,7 +293,7 @@ public sealed partial class RawInputHotkeyService : IGlobalHotkeyService
             CreateHandle(new Forms.CreateParams
             {
                 Caption = "VoicePaste.RawInput",
-                Parent = new nint(-3),
+                Parent = (nint)(-3),
             });
         }
 
@@ -303,24 +306,24 @@ public sealed partial class RawInputHotkeyService : IGlobalHotkeyService
         }
     }
 
-    private static partial class NativeMethods
+    private static class NativeMethods
     {
-        [LibraryImport("user32.dll", SetLastError = true)]
+        [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static partial bool RegisterRawInputDevices(
+        public static extern bool RegisterRawInputDevices(
             [In] RawInputDevice[] devices,
             uint deviceCount,
             uint deviceSize);
 
-        [LibraryImport("user32.dll", SetLastError = true)]
-        public static partial uint GetRawInputData(
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern uint GetRawInputData(
             nint rawInput,
             uint command,
             nint data,
             ref uint size,
             uint headerSize);
 
-        [LibraryImport("user32.dll")]
-        public static partial short GetAsyncKeyState(int virtualKey);
+        [DllImport("user32.dll")]
+        public static extern short GetAsyncKeyState(int virtualKey);
     }
 }

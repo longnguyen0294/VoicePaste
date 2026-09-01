@@ -21,7 +21,7 @@ public sealed class CredentialListFilterTests
             "OPENAI",
             "openai-api-key");
 
-        Assert.HasCount(1, result);
+        Assert.AreEqual(1, result.Count);
         Assert.AreEqual("openai-api-key", result[0].Reference);
         Assert.IsTrue(result[0].IsActive);
         StringAssert.Contains(result[0].DisplayText, "active");

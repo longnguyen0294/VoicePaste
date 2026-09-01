@@ -18,7 +18,10 @@ public sealed partial class WindowsCredentialStore : ICredentialStore
     {
         cancellationToken.ThrowIfCancellationRequested();
         ValidateReference(reference);
-        ArgumentException.ThrowIfNullOrWhiteSpace(secret);
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            throw new ArgumentException("A credential secret is required.", nameof(secret));
+        }
         var secretBytes = Encoding.Unicode.GetBytes(secret);
         if (secretBytes.Length > MaximumCredentialBlobBytes)
         {
@@ -26,10 +29,10 @@ public sealed partial class WindowsCredentialStore : ICredentialStore
             throw new ArgumentException("Credential exceeds the Windows credential blob limit.", nameof(secret));
         }
 
-        nint secretPointer = nint.Zero;
-        nint targetPointer = nint.Zero;
-        nint userPointer = nint.Zero;
-        nint credentialPointer = nint.Zero;
+        nint secretPointer = IntPtr.Zero;
+        nint targetPointer = IntPtr.Zero;
+        nint userPointer = IntPtr.Zero;
+        nint credentialPointer = IntPtr.Zero;
         try
         {
             secretPointer = Marshal.AllocCoTaskMem(secretBytes.Length);
@@ -87,7 +90,7 @@ public sealed partial class WindowsCredentialStore : ICredentialStore
         try
         {
             var credential = Marshal.PtrToStructure<NativeCredential>(credentialPointer);
-            if (credential.CredentialBlob == nint.Zero || credential.CredentialBlobSize == 0)
+            if (credential.CredentialBlob == IntPtr.Zero || credential.CredentialBlobSize == 0)
             {
                 return Task.FromResult<string?>(string.Empty);
             }
@@ -131,7 +134,7 @@ public sealed partial class WindowsCredentialStore : ICredentialStore
                 var itemPointer = Marshal.ReadIntPtr(
                     credentialsPointer,
                     checked((int)index * IntPtr.Size));
-                if (itemPointer == nint.Zero)
+                if (itemPointer == IntPtr.Zero)
                 {
                     continue;
                 }
@@ -189,7 +192,10 @@ public sealed partial class WindowsCredentialStore : ICredentialStore
 
     private static void ValidateReference(string reference)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(reference);
+        if (string.IsNullOrWhiteSpace(reference))
+        {
+            throw new ArgumentException("A credential reference is required.", nameof(reference));
+        }
         if (!IsValidReference(reference))
         {
             throw new ArgumentException("Credential reference is invalid.", nameof(reference));
@@ -224,7 +230,7 @@ public sealed partial class WindowsCredentialStore : ICredentialStore
 
     private static void FreeIfAllocated(nint pointer)
     {
-        if (pointer != nint.Zero)
+        if (pointer != IntPtr.Zero)
         {
             Marshal.FreeCoTaskMem(pointer);
         }
@@ -247,33 +253,33 @@ public sealed partial class WindowsCredentialStore : ICredentialStore
         public nint UserName;
     }
 
-    private static partial class NativeMethods
+    private static class NativeMethods
     {
-        [LibraryImport("advapi32.dll", EntryPoint = "CredWriteW", SetLastError = true)]
+        [DllImport("advapi32.dll", EntryPoint = "CredWriteW", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static partial bool CredWrite(nint credential, uint flags);
+        public static extern bool CredWrite(nint credential, uint flags);
 
-        [LibraryImport("advapi32.dll", EntryPoint = "CredReadW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [DllImport("advapi32.dll", EntryPoint = "CredReadW", SetLastError = true, CharSet = CharSet.Unicode)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static partial bool CredRead(
+        public static extern bool CredRead(
             string target,
             uint type,
             uint flags,
             out nint credential);
 
-        [LibraryImport("advapi32.dll", EntryPoint = "CredDeleteW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [DllImport("advapi32.dll", EntryPoint = "CredDeleteW", SetLastError = true, CharSet = CharSet.Unicode)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static partial bool CredDelete(string target, uint type, uint flags);
+        public static extern bool CredDelete(string target, uint type, uint flags);
 
-        [LibraryImport("advapi32.dll", EntryPoint = "CredEnumerateW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+        [DllImport("advapi32.dll", EntryPoint = "CredEnumerateW", SetLastError = true, CharSet = CharSet.Unicode)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static partial bool CredEnumerate(
+        public static extern bool CredEnumerate(
             string filter,
             uint flags,
             out uint count,
             out nint credentials);
 
-        [LibraryImport("advapi32.dll")]
-        public static partial void CredFree(nint buffer);
+        [DllImport("advapi32.dll")]
+        public static extern void CredFree(nint buffer);
     }
 }

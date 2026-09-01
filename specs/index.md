@@ -4,11 +4,11 @@
 
 - Product stage: MVP foundation implementation in progress
 - Source SRS: [`Requirement/VoicePaste_Requirements.md`](../Requirement/VoicePaste_Requirements.md)
-- SRS version: 1.3, Draft for MVP
+- SRS version: 1.5, Draft for MVP
 - Target: 64-bit Windows 11; Windows 10 22H2 build 19045 compatibility baseline
-- Adopted stack: C# / .NET 10 LTS / WPF (`net10.0-windows`, `win-x64`)
+- Adopted stack: C# / .NET 6.0.36 / WPF (`net6.0-windows`, self-contained `win-x64`)
 
-Production source now exists under `src/`, with deterministic suites under `tests/`. The .NET 10
+Production source now exists under `src/`, with deterministic suites under `tests/`. The .NET 6.0.36
 solution, Core coordinator, Windows adapters, tray shell, OpenAI `gpt-transcribe` candidate, and
 self-contained publish have build/test evidence. The provider adapter exists, but final provider
 selection, live speech quality, frozen mixed-language corpus, and Windows compatibility/manual gates

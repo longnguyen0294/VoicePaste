@@ -312,7 +312,10 @@ public sealed class ChunkedAudioContent : IAudioContent
 
     public ValueTask<Stream> OpenReadAsync(CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            throw new ObjectDisposedException(nameof(ChunkedAudioContent));
+        }
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult<Stream>(new ConcatenatedReadStream(_chunkPaths));
     }
@@ -388,7 +391,10 @@ internal sealed class ConcatenatedReadStream : Stream
         Memory<byte> buffer,
         CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(ConcatenatedReadStream));
+        }
         while (true)
         {
             if (_current is null)

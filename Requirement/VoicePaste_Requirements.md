@@ -1,9 +1,9 @@
 # VoicePaste — Software Requirements Specification
 
-**Document version:** 1.4
+**Document version:** 1.5
 **Status:** Draft for MVP
 **Target platform:** 64-bit Windows 11; Windows 10 22H2 (build 19045) compatibility target  
-**Suggested stack:** C# / .NET 10 LTS / WPF (`net10.0-windows`)
+**Suggested stack:** C# / .NET 6.0.36 / WPF (`net6.0-windows`)
 
 ## 1. Product overview
 

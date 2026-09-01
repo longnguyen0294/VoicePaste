@@ -16,7 +16,7 @@ public sealed partial class WindowsForegroundWindowTracker : IForegroundWindowTr
     {
         cancellationToken.ThrowIfCancellationRequested();
         var handle = NativeMethods.GetForegroundWindow();
-        if (handle == nint.Zero)
+        if (handle == IntPtr.Zero)
         {
             return Task.FromResult(TargetUnavailable("no_foreground_window"));
         }
@@ -58,7 +58,7 @@ public sealed partial class WindowsForegroundWindowTracker : IForegroundWindowTr
     public OperationResult<Unit> ValidateForPaste(TargetWindow target)
     {
         var currentForeground = NativeMethods.GetForegroundWindow();
-        if (currentForeground != target.Handle || currentForeground == nint.Zero)
+        if (currentForeground != target.Handle || currentForeground == IntPtr.Zero)
         {
             return TargetValidationFailure(
                 ErrorCategory.TargetUnavailable,
@@ -134,13 +134,13 @@ public sealed partial class WindowsForegroundWindowTracker : IForegroundWindowTr
             IsRetryable: true,
             diagnosticCode));
 
-    private static partial class NativeMethods
+    private static class NativeMethods
     {
-        [LibraryImport("user32.dll")]
-        public static partial nint GetForegroundWindow();
+        [DllImport("user32.dll")]
+        public static extern nint GetForegroundWindow();
 
-        [LibraryImport("user32.dll", SetLastError = true)]
-        public static partial uint GetWindowThreadProcessId(nint window, out uint processId);
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern uint GetWindowThreadProcessId(nint window, out uint processId);
     }
 }
 
@@ -161,7 +161,7 @@ internal static partial class IntegrityLevelReader
             NativeMethods.GetTokenInformation(
                 tokenHandle,
                 TokenIntegrityLevel,
-                nint.Zero,
+                IntPtr.Zero,
                 0,
                 out var requiredLength);
             if (requiredLength == 0)
@@ -184,7 +184,7 @@ internal static partial class IntegrityLevelReader
 
                 var label = Marshal.PtrToStructure<TokenMandatoryLabel>(buffer);
                 var countPointer = NativeMethods.GetSidSubAuthorityCount(label.Label.Sid);
-                if (countPointer == nint.Zero)
+                if (countPointer == IntPtr.Zero)
                 {
                     return 0;
                 }
@@ -196,7 +196,7 @@ internal static partial class IntegrityLevelReader
                 }
 
                 var authorityPointer = NativeMethods.GetSidSubAuthority(label.Label.Sid, (uint)(count - 1));
-                return authorityPointer == nint.Zero ? 0 : Marshal.ReadInt32(authorityPointer);
+                return authorityPointer == IntPtr.Zero ? 0 : Marshal.ReadInt32(authorityPointer);
             }
             finally
             {
@@ -222,32 +222,32 @@ internal static partial class IntegrityLevelReader
         public SidAndAttributes Label;
     }
 
-    private static partial class NativeMethods
+    private static class NativeMethods
     {
-        [LibraryImport("advapi32.dll", SetLastError = true)]
+        [DllImport("advapi32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static partial bool OpenProcessToken(
+        public static extern bool OpenProcessToken(
             nint processHandle,
             uint desiredAccess,
             out nint tokenHandle);
 
-        [LibraryImport("advapi32.dll", SetLastError = true)]
+        [DllImport("advapi32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static partial bool GetTokenInformation(
+        public static extern bool GetTokenInformation(
             nint tokenHandle,
             int tokenInformationClass,
             nint tokenInformation,
             uint tokenInformationLength,
             out uint returnLength);
 
-        [LibraryImport("advapi32.dll")]
-        public static partial nint GetSidSubAuthorityCount(nint sid);
+        [DllImport("advapi32.dll")]
+        public static extern nint GetSidSubAuthorityCount(nint sid);
 
-        [LibraryImport("advapi32.dll")]
-        public static partial nint GetSidSubAuthority(nint sid, uint subAuthority);
+        [DllImport("advapi32.dll")]
+        public static extern nint GetSidSubAuthority(nint sid, uint subAuthority);
 
-        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static partial bool CloseHandle(nint handle);
+        public static extern bool CloseHandle(nint handle);
     }
 }

@@ -163,10 +163,13 @@ public sealed partial class WindowsTextInsertionService : ITextInsertionService,
                 KeyboardInput.Create(keyboardInput, vKey, keyUp),
                 KeyboardInput.Create(keyboardInput, controlKey, keyUp),
             };
-            NativeMethods.SendInput(
-                (uint)releases.Length,
-                releases,
-                Marshal.SizeOf<KeyboardInput>());
+            if (NativeMethods.SendInput(
+                    (uint)releases.Length,
+                    releases,
+                    Marshal.SizeOf<KeyboardInput>()) != (uint)releases.Length)
+            {
+                return false;
+            }
         }
 
         return false;
@@ -212,10 +215,13 @@ public sealed partial class WindowsTextInsertionService : ITextInsertionService,
                         unmatchedKeyDown.ScanCode,
                         UnicodeTextInput.UnicodeFlag | UnicodeTextInput.KeyUpFlag),
                 };
-                NativeMethods.SendInput(
-                    (uint)release.Length,
-                    release,
-                    Marshal.SizeOf<KeyboardInput>());
+                if (NativeMethods.SendInput(
+                        (uint)release.Length,
+                        release,
+                        Marshal.SizeOf<KeyboardInput>()) != (uint)release.Length)
+                {
+                    return false;
+                }
             }
 
             return false;
@@ -288,10 +294,10 @@ public sealed partial class WindowsTextInsertionService : ITextInsertionService,
         public nuint ExtraInfo;
     }
 
-    private static partial class NativeMethods
+    private static class NativeMethods
     {
-        [LibraryImport("user32.dll", SetLastError = true)]
-        public static partial uint SendInput(
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern uint SendInput(
             uint inputCount,
             [In] KeyboardInput[] inputs,
             int inputSize);

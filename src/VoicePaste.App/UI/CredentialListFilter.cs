@@ -19,7 +19,10 @@ public static class CredentialListFilter
         string activeReference)
     {
         ArgumentNullException.ThrowIfNull(credentials);
-        ArgumentException.ThrowIfNullOrWhiteSpace(activeReference);
+        if (string.IsNullOrWhiteSpace(activeReference))
+        {
+            throw new ArgumentException("An active credential reference is required.", nameof(activeReference));
+        }
         var query = searchText?.Trim();
         return credentials
             .Where(item => string.IsNullOrEmpty(query) ||

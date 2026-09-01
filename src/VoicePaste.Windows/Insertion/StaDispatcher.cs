@@ -22,7 +22,10 @@ internal sealed class StaDispatcher : IDisposable
 
     public async Task<T> InvokeAsync<T>(Func<T> action, CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(StaDispatcher));
+        }
         var dispatcher = await _ready.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
         var operation = dispatcher.InvokeAsync(action, DispatcherPriority.Send, cancellationToken);
         return await operation.Task.ConfigureAwait(false);
@@ -51,4 +54,3 @@ internal sealed class StaDispatcher : IDisposable
         Dispatcher.Run();
     }
 }
-

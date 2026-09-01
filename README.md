@@ -30,9 +30,9 @@ To run VoicePaste:
 - A working microphone.
 - Network access and an OpenAI API key with available API billing/quota.
 
-To build from source, install the .NET SDK version pinned in [`global.json`](global.json) (currently
-.NET 10.0.302). A self-contained published build does not require a separately installed .NET
-runtime on the target computer.
+The project targets .NET 6.0.36. Its repository-local .NET 10.0.302 SDK is the supported build
+toolchain; the generated Windows x64 application is self-contained and does not require a separately
+installed .NET runtime on the target computer.
 
 ## Quick start from source
 

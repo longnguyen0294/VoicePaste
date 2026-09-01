@@ -40,7 +40,7 @@ public sealed class OpenAiSpeechToTextProviderTests
         {
             var body = handler.Bodies[index];
             var riffOffset = FindSequence(body, "RIFF"u8);
-            Assert.IsGreaterThanOrEqualTo(0, riffOffset);
+            Assert.IsTrue(riffOffset >= 0);
             Assert.AreEqual("WAVE", Encoding.ASCII.GetString(body, riffOffset + 8, 4));
             Assert.AreEqual(1, BinaryPrimitives.ReadUInt16LittleEndian(body.AsSpan(riffOffset + 20, 2)));
             Assert.AreEqual(16_000u, BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(riffOffset + 24, 4)));

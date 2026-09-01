@@ -1,10 +1,9 @@
-<Project Sdk="MSTest.Sdk/4.3.3">
+<Project Sdk="MSTest.Sdk/3.6.2">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net6.0</TargetFramework>
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/VoicePaste.Core/VoicePaste.Core.csproj" />
   </ItemGroup>
 </Project>
-

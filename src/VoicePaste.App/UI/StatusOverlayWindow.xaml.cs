@@ -68,12 +68,12 @@ public sealed partial class StatusOverlayWindow : Window
             style | ExtendedStyleNoActivate | ExtendedStyleToolWindow | ExtendedStyleTransparent);
     }
 
-    private static partial class NativeMethods
+    private static class NativeMethods
     {
-        [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
-        public static partial nint GetWindowLongPtr(nint window, int index);
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+        public static extern nint GetWindowLongPtr(nint window, int index);
 
-        [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
-        public static partial nint SetWindowLongPtr(nint window, int index, nint value);
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+        public static extern nint SetWindowLongPtr(nint window, int index, nint value);
     }
 }

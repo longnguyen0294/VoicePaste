@@ -184,12 +184,12 @@ public sealed partial class WindowsClipboardService : IDisposable
         public string DiagnosticCode { get; } = diagnosticCode;
     }
 
-    private static partial class NativeMethods
+    private static class NativeMethods
     {
-        [LibraryImport("user32.dll")]
-        public static partial uint GetClipboardSequenceNumber();
+        [DllImport("user32.dll")]
+        public static extern uint GetClipboardSequenceNumber();
 
-        [LibraryImport("user32.dll")]
-        public static partial nint GetClipboardOwner();
+        [DllImport("user32.dll")]
+        public static extern nint GetClipboardOwner();
     }
 }

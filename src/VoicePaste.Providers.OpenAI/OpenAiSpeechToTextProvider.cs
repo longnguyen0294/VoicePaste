@@ -66,7 +66,10 @@ public sealed class OpenAiSpeechToTextProvider : ISpeechToTextProvider, IDisposa
         TranscriptionOptions options,
         CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(OpenAiSpeechToTextProvider));
+        }
         ArgumentNullException.ThrowIfNull(audio);
         ArgumentNullException.ThrowIfNull(options);
 
@@ -511,7 +514,10 @@ internal sealed class WavPcmHttpContent : HttpContent
 
     private static byte[] CreateHeader(AudioFormat format, long pcmLength)
     {
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(pcmLength, (long)uint.MaxValue);
+        if (pcmLength > uint.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(nameof(pcmLength));
+        }
 
         var header = new byte[HeaderLength];
         "RIFF"u8.CopyTo(header);

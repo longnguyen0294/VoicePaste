@@ -49,7 +49,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
     private readonly string _audioRoot;
     private readonly IFreeSpaceProbe _freeSpaceProbe;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private WasapiRecorder? _capture;
+    private WasapiCapture? _capture;
     private MMDevice? _device;
     private ChunkedPcmSink? _sink;
     private string? _recordingDirectory;
@@ -72,7 +72,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
         string microphoneId,
         CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ThrowIfDisposed();
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -90,14 +90,11 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
                 _device = string.Equals(microphoneId, "default", StringComparison.OrdinalIgnoreCase)
                     ? enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications)
                     : enumerator.GetDevice(microphoneId);
-                _capture = new WasapiRecorderBuilder()
-                    .WithDevice(_device)
-                    .WithSharedMode()
-                    .WithFormat(new WaveFormat(16_000, 16, 1))
-                    .WithEventSync()
-                    .WithBufferLength(50)
-                    .WithMmcssThreadPriority("Capture")
-                    .Build();
+                _capture = new WasapiCapture(_device, true, 50)
+                {
+                    ShareMode = AudioClientShareMode.Shared,
+                    WaveFormat = new WaveFormat(16_000, 16, 1),
+                };
                 var waveFormat = _capture.WaveFormat;
                 _format = new AudioFormat(
                     waveFormat.SampleRate,
@@ -146,7 +143,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
 
     public async Task<OperationResult<AudioRecording>> StopAsync(CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ThrowIfDisposed();
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -254,13 +251,9 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
         _gate.Dispose();
     }
 
-    private void OnDataAvailable(
-        ReadOnlySpan<byte> buffer,
-        AudioClientBufferFlags flags,
-        long devicePosition,
-        long qpcPosition)
+    private void OnDataAvailable(object? sender, WaveInEventArgs args)
     {
-        _sink?.TryWrite(buffer);
+        _sink?.TryWrite(args.Buffer.AsSpan(0, args.BytesRecorded));
     }
 
     private void OnRecordingStopped(object? sender, StoppedEventArgs args)
@@ -379,6 +372,14 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
                 exception.GetType().Name);
             _captureFailure ??= failure;
             _recordingStopped?.TrySetResult(failure);
+        }
+    }
+
+    private void ThrowIfDisposed()
+    {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(WasapiAudioCaptureService));
         }
     }
 
