@@ -79,7 +79,7 @@ VoicePaste.Providers.* ───────┘
 | `IGlobalHotkeyService` | Observe pass-through press/release through Raw Input, distinguish Right Ctrl, reconcile interruptions, and release unmanaged resources | FR-010–018, NFR-016 |
 | `IForegroundWindowTracker` | Capture and validate the intended target window | FR-040, FR-048 |
 | `IAudioCaptureService` | Enumerate microphones and stream user-held push-to-talk audio through bounded buffers to chunked temporary storage without an elapsed-time cutoff | FR-020–026, NFR-002, NFR-007, NFR-015 |
-| `ISpeechToTextProvider` | Convert audio to Unicode text, including benchmarked Vietnamese-English code-switching, behind a replaceable abstraction | FR-030–039, NFR-003, NFR-006 |
+| `ISpeechToTextProvider` / `IStreamingSpeechToTextProvider` | Convert recorded or live audio to Unicode text, including Vietnamese-English code-switching, behind replaceable batch and streaming abstractions | FR-030–039, NFR-003, NFR-006 |
 | `ITextInsertionService` | Insert normalized text using clipboard plus simulated paste | FR-042–048 |
 | `IClipboardService` | Snapshot clipboard, write transcript, detect ownership, and conditionally restore | FR-043–046, NFR-014 |
 | `DictationSessionCoordinator` | Own the session lock, state machine, cancellation, cleanup, and recovery | FR-014, FR-050, NFR-011–013 |
@@ -96,22 +96,24 @@ VoicePaste.Providers.* ───────┘
 2. The coordinator atomically acquires the single-session lease. If unavailable, the press is ignored
    or reported without starting another capture.
 3. The foreground-window tracker captures the intended target before VoicePaste displays feedback.
-4. The state changes from `Idle` to `Listening`; audio capture starts off the UI thread and the overlay
-   displays without activation.
+4. In realtime mode, the coordinator opens a provider transcription session and waits for the
+   provider's session acknowledgement before starting capture. The state then changes from `Idle` to
+   `Listening`; audio capture starts off the UI thread and the overlay displays without activation.
 5. Capture continues while the accepted push-to-talk key remains held. Centrally pinned
    `NAudio.Wasapi` `3.0.1` provides WASAPI capture behind the Windows audio adapter. Audio callbacks
    feed a bounded channel and a single writer emits
    sequential chunks of at most five minutes into application-owned temporary storage rather than
    accumulating the recording in memory. A release edge stops capture; cancellation, the 300 ms
    minimum-duration rule, the 256 MiB free-space reserve, and device-error rules are evaluated.
-   WASAPI shared-mode conversion normalizes capture to 16 kHz, 16-bit, mono PCM. Elapsed duration
+   WASAPI shared-mode conversion normalizes capture to 24 kHz, 16-bit, mono PCM. Elapsed duration
    alone never stops or rejects the recording.
-6. The state changes to `Transcribing`; the provisional OpenAI adapter retrieves the user's key from
-   Windows Credential Manager and sends WAV audio to the `gpt-transcribe` transcription endpoint.
-   It supplies `vi`/`en` hints for mixed mode, streams ordered segments capped at 24 MiB PCM (below
-   the provider's 25 MiB file limit), carries a bounded prior-transcript tail as continuation context,
-   and combines results in order. These request segments never become an application-level recording
-   cutoff. Auth, quota, timeout, network, payload, response, and provider failures map to typed errors.
+6. The OpenAI adapters retrieve the user's key from Windows Credential Manager. Standard mode sends
+   WAV audio to the `gpt-transcribe` transcription endpoint, using ordered segments capped at 24 MiB
+   PCM and a bounded continuation prompt. Realtime mode uses a WebSocket transcription session with
+   `gpt-live-transcribe`, 24 kHz PCM append/commit events, `vi`/`en` language hints, interim deltas,
+   and a final completed transcript. Session rejection, transcription failure, auth, quota, timeout,
+   network, payload, response, and provider failures map to typed errors without retaining provider
+   messages that may contain user data.
 7. Empty or whitespace-only results are rejected. A valid result is normalized according to settings.
 8. The state changes to `Pasting`; the insertion service revalidates the captured HWND, process ID,
    process start identity, integrity level, and current foreground window. If the original target is

@@ -43,6 +43,26 @@
                        TextWrapping="Wrap"
                        AutomationProperties.Name="Record button status" />
 
+            <TextBlock Margin="0,18,0,4" FontWeight="SemiBold" Text="Dictation mode" />
+            <TextBlock Margin="0,0,0,8" Foreground="#555" TextWrapping="Wrap"
+                       Text="Choose how speech is transcribed and processed." />
+            <RadioButton x:Name="StandardModeRadioButton"
+                         Content="Standard Mode (gpt-transcribe REST — default)"
+                         GroupName="DictationModeGroup"
+                         Checked="DictationMode_Checked"
+                         AutomationProperties.Name="Standard batch dictation mode" />
+            <RadioButton x:Name="RealtimeModeRadioButton"
+                         Margin="0,6,0,0"
+                         Content="Realtime Mode (GPT Live Transcribe WebSocket)"
+                         GroupName="DictationModeGroup"
+                         Checked="DictationMode_Checked"
+                         AutomationProperties.Name="Realtime streaming dictation mode" />
+            <TextBlock x:Name="DictationModeStatusText"
+                       Margin="0,6,0,0"
+                       Foreground="#555"
+                       TextWrapping="Wrap"
+                       AutomationProperties.Name="Dictation mode status" />
+
             <TextBlock Margin="0,18,0,4" FontWeight="SemiBold" Text="OpenAI API key" />
             <PasswordBox x:Name="ApiKeyBox"
                          MaxLength="1024"

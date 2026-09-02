@@ -81,7 +81,7 @@ record below or have exact executed evidence in `requirements-traceability.md`.
 | IT-LIFE-001 | Application lifecycle | WPF harness verifies close-to-tray, pause, explicit exit, and Raw Input registration disposal | FR-002–005, FR-016 |
 | IT-ICON-001 | Application icon packaging | Icon asset loads, contains the required multi-resolution entries, and is referenced by the executable/tray project | FR-003, FR-005, NFR-034 |
 | IT-AUDIO-001 | Audio capture | Test audio source and Windows device adapter verify ordered incremental capture, bounded buffers/chunks, 300 ms minimum, release/cancel stop conditions, 256 MiB storage reserve, and device errors | FR-020–026, NFR-002, NFR-007, NFR-015 |
-| IT-STT-001 | Provider | Mocked HTTP/provider responses verify languages, mixed-language segmentation, timeouts, and errors | FR-030–039, NFR-010 |
+| IT-STT-001 | Provider | Mocked HTTP and WebSocket responses verify session acknowledgement, audio append/commit, language hints, mixed-language segmentation, transcript events, timeouts, and typed errors | FR-030–039, NFR-010 |
 | IT-STT-002 | Provider live smoke | Explicit test environment verifies Vietnamese, English, mixed Vietnamese-English, long-recording handling, and provider disclosure | FR-031, FR-034, FR-039, NFR-022 |
 | IT-STT-003 | Provider corpus gate | Frozen-corpus runner emits per-utterance/aggregate WER, English keyword recall, and complete-segment omission evidence for the pinned provider/model | FR-031, FR-034, FR-039, NFR-006 |
 | IT-STT-004 | Long provider pipeline | Synthetic 60-minute content is segmented when required, submitted, and recombined with no missing or reordered segment | FR-023, FR-030, NFR-007 |

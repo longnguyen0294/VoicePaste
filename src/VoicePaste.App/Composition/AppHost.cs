@@ -17,6 +17,7 @@ internal sealed class AppHost : IAsyncDisposable
     private readonly IDictationSessionCoordinator _coordinator;
     private readonly WindowsTextInsertionService _insertionService;
     private readonly OpenAiSpeechToTextProvider _speechProvider;
+    private readonly OpenAiRealtimeSpeechToTextProvider _realtimeProvider;
     private readonly AppStatusController _status;
     private readonly TrayIconController _tray;
     private readonly StatusOverlayWindow _overlay;
@@ -30,6 +31,7 @@ internal sealed class AppHost : IAsyncDisposable
         IDictationSessionCoordinator coordinator,
         WindowsTextInsertionService insertionService,
         OpenAiSpeechToTextProvider speechProvider,
+        OpenAiRealtimeSpeechToTextProvider realtimeProvider,
         AppStatusController status,
         TrayIconController tray,
         StatusOverlayWindow overlay,
@@ -40,6 +42,7 @@ internal sealed class AppHost : IAsyncDisposable
         _coordinator = coordinator;
         _insertionService = insertionService;
         _speechProvider = speechProvider;
+        _realtimeProvider = realtimeProvider;
         _status = status;
         _tray = tray;
         _overlay = overlay;
@@ -75,13 +78,20 @@ internal sealed class AppHost : IAsyncDisposable
             credentialStore,
             providerOptions,
             ownsHttpClient: true);
+        var realtimeProvider = new OpenAiRealtimeSpeechToTextProvider(
+            credentialStore,
+            OpenAiRealtimeProviderOptions.Default with
+            {
+                CredentialReference = providerOptions.CredentialReference,
+            });
         var coordinator = new DictationSessionCoordinator(
             targetTracker,
             new WasapiAudioCaptureService(),
             provider,
             insertion,
             status,
-            settings);
+            settings,
+            realtimeProvider);
         var hotkey = new RawInputHotkeyService();
         var overlay = new StatusOverlayWindow();
         AppHost? host = null;
@@ -100,6 +110,11 @@ internal sealed class AppHost : IAsyncDisposable
                 host?.SetRecordHotkey(gesture);
                 return Task.CompletedTask;
             },
+            mode =>
+            {
+                host?.SetDictationMode(mode);
+                return Task.CompletedTask;
+            },
             providerOptions.CredentialReference);
         status.Attach(overlay, tray, settingsWindow);
         host = new AppHost(
@@ -107,6 +122,7 @@ internal sealed class AppHost : IAsyncDisposable
             coordinator,
             insertion,
             provider,
+            realtimeProvider,
             status,
             tray,
             overlay,
@@ -153,6 +169,7 @@ internal sealed class AppHost : IAsyncDisposable
         finally
         {
             _speechProvider.Dispose();
+            _realtimeProvider.Dispose();
             _insertionService.Dispose();
             _disposed = true;
         }
@@ -185,6 +202,20 @@ internal sealed class AppHost : IAsyncDisposable
         {
             _hotkeyService.Unregister();
             _hotkeyService.Start(_appSettings.Hotkey);
+        }
+    }
+
+    public void SetDictationMode(DictationMode mode)
+    {
+        if (_appSettings.DictationMode == mode)
+        {
+            return;
+        }
+
+        _appSettings = _appSettings with { DictationMode = mode };
+        if (_coordinator is DictationSessionCoordinator concreteCoordinator)
+        {
+            concreteCoordinator.UpdateSettings(_appSettings);
         }
     }
 

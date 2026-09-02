@@ -1,7 +1,14 @@
 namespace VoicePaste.Core;
 
+public sealed class AudioChunkAvailableEventArgs(ReadOnlyMemory<byte> data) : EventArgs
+{
+    public ReadOnlyMemory<byte> Data { get; } = data;
+}
+
 public interface IAudioCaptureService : IAsyncDisposable
 {
+    event EventHandler<AudioChunkAvailableEventArgs>? DataAvailable;
+
     Task<OperationResult<Unit>> StartAsync(string microphoneId, CancellationToken cancellationToken);
 
     Task<OperationResult<AudioRecording>> StopAsync(CancellationToken cancellationToken);
@@ -22,6 +29,28 @@ public interface ISpeechToTextProvider
 
     Task<OperationResult<TranscriptionOutput>> TranscribeAsync(
         AudioRecording audio,
+        TranscriptionOptions options,
+        CancellationToken cancellationToken);
+}
+
+public interface IStreamingSpeechToTextSession : IAsyncDisposable
+{
+    event EventHandler<string>? InterimTranscriptReceived;
+
+    Task SendAudioChunkAsync(ReadOnlyMemory<byte> pcmChunk, CancellationToken cancellationToken);
+
+    Task<OperationResult<TranscriptionOutput>> CompleteAsync(CancellationToken cancellationToken);
+
+    Task CancelAsync(CancellationToken cancellationToken);
+}
+
+public interface IStreamingSpeechToTextProvider
+{
+    string ProviderId { get; }
+
+    SpeechProviderCapabilities Capabilities { get; }
+
+    Task<OperationResult<IStreamingSpeechToTextSession>> StartSessionAsync(
         TranscriptionOptions options,
         CancellationToken cancellationToken);
 }
@@ -80,6 +109,10 @@ public interface IStatusSink
     ValueTask PublishAsync(
         DictationSessionState state,
         OperationError? operationError,
+        CancellationToken cancellationToken);
+
+    ValueTask PublishInterimTranscriptAsync(
+        string interimTranscript,
         CancellationToken cancellationToken);
 }
 

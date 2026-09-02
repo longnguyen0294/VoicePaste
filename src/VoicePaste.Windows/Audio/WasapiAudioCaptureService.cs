@@ -59,6 +59,8 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
     private TaskCompletionSource<OperationError?>? _recordingStopped;
     private bool _disposed;
 
+    public event EventHandler<AudioChunkAvailableEventArgs>? DataAvailable;
+
     public WasapiAudioCaptureService(string? audioRoot = null, IFreeSpaceProbe? freeSpaceProbe = null)
     {
         _audioRoot = audioRoot ?? Path.Combine(
@@ -93,7 +95,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
                 _capture = new WasapiRecorderBuilder()
                     .WithDevice(_device)
                     .WithSharedMode()
-                    .WithFormat(new WaveFormat(16_000, 16, 1))
+                    .WithFormat(new WaveFormat(24_000, 16, 1))
                     .WithEventSync()
                     .WithBufferLength(50)
                     .WithMmcssThreadPriority("Capture")
@@ -261,6 +263,11 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
         long qpcPosition)
     {
         _sink?.TryWrite(buffer);
+        if (DataAvailable is not null && !buffer.IsEmpty)
+        {
+            var chunk = buffer.ToArray();
+            DataAvailable.Invoke(this, new AudioChunkAvailableEventArgs(chunk));
+        }
     }
 
     private void OnRecordingStopped(object? sender, StoppedEventArgs args)

@@ -15,6 +15,7 @@ public partial class SettingsWindow : Window
     private readonly ICredentialStore _credentialStore;
     private readonly ISettingsStore _settingsStore;
     private readonly Func<HotkeyGesture, Task>? _hotkeyChangedCallback;
+    private readonly Func<DictationMode, Task>? _dictationModeChangedCallback;
     private readonly string _credentialReference;
     private AppSettings _appSettings;
     private IReadOnlyList<StoredCredentialDescriptor> _storedCredentials = [];
@@ -29,6 +30,7 @@ public partial class SettingsWindow : Window
         ISettingsStore settingsStore,
         AppSettings appSettings,
         Func<HotkeyGesture, Task>? hotkeyChangedCallback,
+        Func<DictationMode, Task>? dictationModeChangedCallback,
         string credentialReference)
     {
         _statusController = statusController;
@@ -37,9 +39,10 @@ public partial class SettingsWindow : Window
         _settingsStore = settingsStore;
         _appSettings = appSettings;
         _hotkeyChangedCallback = hotkeyChangedCallback;
+        _dictationModeChangedCallback = dictationModeChangedCallback;
         _credentialReference = credentialReference;
         InitializeComponent();
-        InitializeHotkeySelection();
+        InitializeSelections();
         Loaded += OnLoaded;
         Closing += OnClosing;
     }
@@ -47,10 +50,10 @@ public partial class SettingsWindow : Window
     internal void UpdateSettings(AppSettings settings)
     {
         _appSettings = settings;
-        InitializeHotkeySelection();
+        InitializeSelections();
     }
 
-    private void InitializeHotkeySelection()
+    private void InitializeSelections()
     {
         _isInitializing = true;
         try
@@ -62,6 +65,15 @@ public partial class SettingsWindow : Window
             else
             {
                 RightCtrlRadioButton.IsChecked = true;
+            }
+
+            if (_appSettings.DictationMode == DictationMode.Realtime)
+            {
+                RealtimeModeRadioButton.IsChecked = true;
+            }
+            else
+            {
+                StandardModeRadioButton.IsChecked = true;
             }
         }
         finally
@@ -110,6 +122,44 @@ public partial class SettingsWindow : Window
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Win32Exception)
         {
             HotkeyStatusText.Text = "The selected record button could not be saved.";
+        }
+    }
+
+    private async void DictationMode_Checked(object sender, RoutedEventArgs args)
+    {
+        if (_isInitializing)
+        {
+            return;
+        }
+
+        var targetMode = RealtimeModeRadioButton.IsChecked == true
+            ? DictationMode.Realtime
+            : DictationMode.Standard;
+
+        if (_appSettings.DictationMode == targetMode)
+        {
+            return;
+        }
+
+        try
+        {
+            var updatedSettings = _appSettings with { DictationMode = targetMode };
+            await _settingsStore.SaveAsync(updatedSettings, CancellationToken.None).ConfigureAwait(true);
+            _appSettings = updatedSettings;
+
+            if (_dictationModeChangedCallback is not null)
+            {
+                await _dictationModeChangedCallback(targetMode).ConfigureAwait(true);
+            }
+
+            var modeName = targetMode == DictationMode.Realtime
+                ? "Realtime Mode (GPT Live Transcribe)"
+                : "Standard Mode (gpt-transcribe)";
+            DictationModeStatusText.Text = $"Dictation mode set to {modeName}.";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            DictationModeStatusText.Text = "The selected dictation mode could not be saved.";
         }
     }
 

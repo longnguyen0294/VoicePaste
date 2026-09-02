@@ -196,6 +196,12 @@ public sealed record StoredCredentialDescriptor(
     string Reference,
     DateTimeOffset? LastWritten);
 
+public enum DictationMode
+{
+    Standard,
+    Realtime,
+}
+
 public sealed record AppSettings(
     int SchemaVersion,
     HotkeyGesture Hotkey,
@@ -204,6 +210,7 @@ public sealed record AppSettings(
     LanguageMode LanguageMode,
     IReadOnlyList<string> LocaleHints,
     string ProviderId,
+    DictationMode DictationMode,
     bool TrimTranscript,
     bool RestoreClipboard,
     bool StartWithWindows,
@@ -222,6 +229,7 @@ public sealed record AppSettings(
         LanguageMode.VietnameseEnglishMixed,
         new ReadOnlyCollection<string>(["vi-VN", "en-US"]),
         "openai-gpt-transcribe",
+        DictationMode.Standard,
         TrimTranscript: true,
         RestoreClipboard: true,
         StartWithWindows: false,
@@ -234,11 +242,14 @@ public sealed record AppSettings(
 public sealed class SessionStateChangedEventArgs(
     DictationSessionState previous,
     DictationSessionState current,
-    OperationError? error = null) : EventArgs
+    OperationError? error = null,
+    string? interimTranscript = null) : EventArgs
 {
     public DictationSessionState Previous { get; } = previous;
 
     public DictationSessionState Current { get; } = current;
 
     public OperationError? Error { get; } = error;
+
+    public string? InterimTranscript { get; } = interimTranscript;
 }

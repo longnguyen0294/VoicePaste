@@ -19,6 +19,24 @@ public sealed partial class StatusOverlayWindow : Window
         SourceInitialized += (_, _) => ApplyNonActivatingStyles();
     }
 
+    public void UpdateInterimTranscript(string interimText)
+    {
+        if (string.IsNullOrWhiteSpace(interimText))
+        {
+            return;
+        }
+
+        StateText.Text = interimText;
+        StateIndicator.Fill = System.Windows.Media.Brushes.LimeGreen;  // L5: stay green while live preview
+        if (!IsVisible)
+        {
+            Show();
+        }
+
+        // H1: Defer position to Render priority so WPF layout has completed and Width/Height are accurate.
+        Dispatcher.InvokeAsync(PositionNearWorkArea, System.Windows.Threading.DispatcherPriority.Render);
+    }
+
     public void UpdateState(DictationSessionState state, OperationError? operationError)
     {
         if (state is DictationSessionState.Idle or
@@ -32,9 +50,9 @@ public sealed partial class StatusOverlayWindow : Window
 
         StateText.Text = state switch
         {
-            DictationSessionState.Listening => "Listening — release Right Ctrl to stop",
-            DictationSessionState.Transcribing => "Transcribing",
-            DictationSessionState.Pasting => "Pasting",
+            DictationSessionState.Listening => "Listening...",
+            DictationSessionState.Transcribing => "Transcribing...",
+            DictationSessionState.Pasting => "Pasting...",
             _ => state.ToString(),
         };
         StateIndicator.Fill = state switch
@@ -49,13 +67,17 @@ public sealed partial class StatusOverlayWindow : Window
         {
             Show();
         }
+        Dispatcher.InvokeAsync(PositionNearWorkArea, System.Windows.Threading.DispatcherPriority.Render);
     }
 
     private void PositionNearWorkArea()
     {
+        UpdateLayout();
         var workArea = SystemParameters.WorkArea;
-        Left = workArea.Right - Width - 24;
-        Top = workArea.Bottom - Height - 24;
+        var width = ActualWidth > 0 ? ActualWidth : (double.IsNaN(Width) ? 280 : Width);
+        var height = ActualHeight > 0 ? ActualHeight : (double.IsNaN(Height) ? 48 : Height);
+        Left = workArea.Right - width - 24;
+        Top = workArea.Bottom - height - 24;
     }
 
     private void ApplyNonActivatingStyles()

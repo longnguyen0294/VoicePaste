@@ -108,9 +108,9 @@ Launch the published application:
 - API keys are stored in Windows Credential Manager, never in `settings.json`, and are excluded from
   application logs.
 - The key manager shows credential metadata only. It never retrieves a key for display.
-- Temporary audio uses a bounded channel, five-minute maximum PCM chunks, and a 256 MiB free-space
-  reserve. Provider requests use 16 kHz, 16-bit, mono PCM WAV segments capped at 24 MiB; request
-  segmentation is not a recording-duration limit.
+- Temporary audio uses 24 kHz, 16-bit, mono PCM through a bounded channel, five-minute maximum
+  chunks, and a 256 MiB free-space reserve. Standard provider WAV requests remain capped at 24 MiB;
+  request segmentation is not a recording-duration limit.
 - Automatic paste proceeds only when the original process/window is still foreground and has a
   compatible integrity level.
 - If the clipboard contains browser-specific, rich, delayed-rendered, or otherwise unsafe formats,

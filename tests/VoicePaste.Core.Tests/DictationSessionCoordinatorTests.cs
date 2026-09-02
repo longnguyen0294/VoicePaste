@@ -80,6 +80,57 @@ public sealed class DictationSessionCoordinatorTests
         Assert.IsTrue(fixture.Status.States.Any(entry => entry.State == DictationSessionState.Cancelled));
     }
 
+    [TestMethod]
+    public async Task UtState005RealtimeStreamingSessionPipesInterimAndPastesFinalTranscript()
+    {
+        var fakeStreamingSession = new FakeStreamingSession("Realtime transcribed text");
+        var fakeStreamingProvider = new FakeStreamingProvider(fakeStreamingSession);
+        var fixture = new CoordinatorFixture
+        {
+            StreamingProvider = fakeStreamingProvider,
+            Settings = AppSettings.Default with { DictationMode = DictationMode.Realtime },
+        };
+
+        await using var coordinator = fixture.CreateCoordinator();
+        var observed = new List<DictationSessionState>();
+        var interimList = new List<string>();
+        coordinator.StateChanged += (_, args) =>
+        {
+            if (args.Previous != args.Current)
+            {
+                observed.Add(args.Current);
+            }
+
+            if (args.InterimTranscript is not null)
+            {
+                interimList.Add(args.InterimTranscript);
+            }
+        };
+
+        var started = await coordinator.StartListeningAsync();
+        Assert.IsTrue(started);
+
+        fixture.Audio.EmitData(new byte[160]);
+        fakeStreamingSession.EmitInterim("Xin chào realtime");
+        await coordinator.CompleteAsync();
+
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                DictationSessionState.Listening,
+                DictationSessionState.Transcribing,
+                DictationSessionState.Pasting,
+                DictationSessionState.Success,
+                DictationSessionState.Idle,
+            },
+            observed);
+
+        Assert.AreEqual("Realtime transcribed text", fixture.Insertion.LastText);
+        Assert.IsTrue(fakeStreamingSession.ChunkCount > 0);
+        Assert.IsTrue(interimList.Contains("Xin chào realtime"));
+        Assert.IsTrue(fixture.Status.InterimTranscripts.Contains("Xin chào realtime"));
+    }
+
     private sealed class CoordinatorFixture
     {
         public FakeAudioCapture Audio { get; } = new();
@@ -87,6 +138,10 @@ public sealed class DictationSessionCoordinatorTests
         public FakeInsertion Insertion { get; } = new();
 
         public FakeStatusSink Status { get; } = new();
+
+        public IStreamingSpeechToTextProvider? StreamingProvider { get; init; }
+
+        public AppSettings Settings { get; init; } = AppSettings.Default;
 
         public OperationResult<TranscriptionOutput> ProviderResult { get; init; } =
             OperationResult.Success(
@@ -98,7 +153,8 @@ public sealed class DictationSessionCoordinatorTests
             new FakeProvider(() => ProviderResult),
             Insertion,
             Status,
-            AppSettings.Default);
+            Settings,
+            StreamingProvider);
     }
 
     private sealed class FakeTargetTracker : IForegroundWindowTracker
@@ -116,6 +172,11 @@ public sealed class DictationSessionCoordinatorTests
 
     private sealed class FakeAudioCapture : IAudioCaptureService
     {
+        public event EventHandler<AudioChunkAvailableEventArgs>? DataAvailable;
+
+        public void EmitData(byte[] bytes) =>
+            DataAvailable?.Invoke(this, new AudioChunkAvailableEventArgs(bytes));
+
         public FakeAudioContent Content { get; } = new(TimeSpan.FromSeconds(1));
 
         public int StartCount { get; private set; }
@@ -185,6 +246,46 @@ public sealed class DictationSessionCoordinatorTests
             CancellationToken cancellationToken) => Task.FromResult(resultFactory());
     }
 
+    private sealed class FakeStreamingSession(string finalText) : IStreamingSpeechToTextSession
+    {
+        public event EventHandler<string>? InterimTranscriptReceived;
+
+        public int ChunkCount { get; private set; }
+
+        public void EmitInterim(string text) => InterimTranscriptReceived?.Invoke(this, text);
+
+        public Task SendAudioChunkAsync(ReadOnlyMemory<byte> pcmChunk, CancellationToken cancellationToken)
+        {
+            ChunkCount++;
+            return Task.CompletedTask;
+        }
+
+        public Task<OperationResult<TranscriptionOutput>> CompleteAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(OperationResult.Success(new TranscriptionOutput(finalText, "vi", TimeSpan.FromMilliseconds(5))));
+
+        public Task CancelAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class FakeStreamingProvider(IStreamingSpeechToTextSession session) : IStreamingSpeechToTextProvider
+    {
+        public string ProviderId => "fake-streaming";
+
+        public SpeechProviderCapabilities Capabilities { get; } = new(
+            new HashSet<LanguageMode>(Enum.GetValues<LanguageMode>()),
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "vi-VN", "en-US" },
+            null,
+            null,
+            SupportsStreaming: true,
+            SendsAudioOffDevice: true);
+
+        public Task<OperationResult<IStreamingSpeechToTextSession>> StartSessionAsync(
+            TranscriptionOptions options,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(OperationResult.Success(session));
+    }
+
     private sealed class FakeInsertion : ITextInsertionService
     {
         public int CallCount { get; private set; }
@@ -207,12 +308,22 @@ public sealed class DictationSessionCoordinatorTests
     {
         public List<(DictationSessionState State, OperationError? Error)> States { get; } = [];
 
+        public List<string> InterimTranscripts { get; } = [];
+
         public ValueTask PublishAsync(
             DictationSessionState state,
             OperationError? error,
             CancellationToken cancellationToken)
         {
             States.Add((state, error));
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask PublishInterimTranscriptAsync(
+            string interimTranscript,
+            CancellationToken cancellationToken)
+        {
+            InterimTranscripts.Add(interimTranscript);
             return ValueTask.CompletedTask;
         }
     }

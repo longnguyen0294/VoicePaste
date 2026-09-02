@@ -48,6 +48,31 @@ internal sealed class AppStatusController : IStatusSink, ITranscriptFallbackStor
         return ValueTask.CompletedTask;
     }
 
+    private string? _pendingInterimTranscript;  // M2: latest-value gate for high-frequency interim events
+
+    public ValueTask PublishInterimTranscriptAsync(
+        string interimTranscript,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // M2: Only schedule one dispatcher post if one isn't already pending; swap in the latest value.
+        var previous = Interlocked.Exchange(ref _pendingInterimTranscript, interimTranscript);
+        if (previous is null)
+        {
+            _dispatcher.BeginInvoke(() =>
+            {
+                var latest = Interlocked.Exchange(ref _pendingInterimTranscript, null);
+                if (latest is not null)
+                {
+                    _overlay?.UpdateInterimTranscript(latest);
+                }
+            }, DispatcherPriority.Background);
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
     public void Retain(string transcript, OperationError operationError)
     {
         _retainedTranscript = transcript;

@@ -5,9 +5,10 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
     private readonly IForegroundWindowTracker _foregroundWindowTracker;
     private readonly IAudioCaptureService _audioCaptureService;
     private readonly ISpeechToTextProvider _speechToTextProvider;
+    private readonly IStreamingSpeechToTextProvider? _streamingSpeechToTextProvider;
     private readonly ITextInsertionService _textInsertionService;
     private readonly IStatusSink _statusSink;
-    private readonly AppSettings _settings;
+    private volatile AppSettings _settings;  // M1: volatile for cross-thread visibility from UI thread updates
     private readonly SemaphoreSlim _gate = new(1, 1);
     private SessionContext? _session;
     private DictationSessionState _state = DictationSessionState.Idle;
@@ -19,11 +20,13 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
         ISpeechToTextProvider speechToTextProvider,
         ITextInsertionService textInsertionService,
         IStatusSink statusSink,
-        AppSettings settings)
+        AppSettings settings,
+        IStreamingSpeechToTextProvider? streamingSpeechToTextProvider = null)
     {
         _foregroundWindowTracker = foregroundWindowTracker;
         _audioCaptureService = audioCaptureService;
         _speechToTextProvider = speechToTextProvider;
+        _streamingSpeechToTextProvider = streamingSpeechToTextProvider;
         _textInsertionService = textInsertionService;
         _statusSink = statusSink;
         _settings = settings;
@@ -32,6 +35,8 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
     public DictationSessionState State => _state;
 
     public event EventHandler<SessionStateChangedEventArgs>? StateChanged;
+
+    public void UpdateSettings(AppSettings settings) => _settings = settings;
 
     public async Task<bool> StartListeningAsync(CancellationToken cancellationToken = default)
     {
@@ -53,29 +58,76 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
                 return false;
             }
 
-            var captureResult = await _audioCaptureService
-                .StartAsync(_settings.MicrophoneId, cancellationToken)
-                .ConfigureAwait(false);
-            if (captureResult is OperationFailure<Unit> captureFailure)
+            var target = ((OperationSuccess<TargetWindow>)targetResult).Value;
+            var cancellation = new CancellationTokenSource();
+            IStreamingSpeechToTextSession? streamingSession = null;
+
+            if (_settings.DictationMode == DictationMode.Realtime && _streamingSpeechToTextProvider is not null)
             {
-                await PublishTerminalAndIdleAsync(DictationSessionState.Error, captureFailure.Error)
+                var options = new TranscriptionOptions(
+                    _settings.LanguageMode,
+                    _settings.LocaleHints,
+                    _settings.TrimTranscript);
+                var streamSessionResult = await _streamingSpeechToTextProvider
+                    .StartSessionAsync(options, cancellationToken)
                     .ConfigureAwait(false);
-                return false;
+
+                if (streamSessionResult is OperationSuccess<IStreamingSpeechToTextSession> success)
+                {
+                    streamingSession = success.Value;
+                    streamingSession.InterimTranscriptReceived += OnInterimTranscriptReceived;
+                }
+                else if (streamSessionResult is OperationFailure<IStreamingSpeechToTextSession> failure)
+                {
+                    cancellation.Cancel();
+                    cancellation.Dispose();
+                    await PublishTerminalAndIdleAsync(DictationSessionState.Error, failure.Error)
+                        .ConfigureAwait(false);
+                    return false;
+                }
             }
 
-            var target = ((OperationSuccess<TargetWindow>)targetResult).Value;
-            var createdSession = new SessionContext(Guid.NewGuid(), target, new CancellationTokenSource());
+            var createdSession = new SessionContext(Guid.NewGuid(), target, cancellation, streamingSession);
             _session = createdSession;
+            _audioCaptureService.DataAvailable += OnAudioDataAvailable;
+
             try
             {
+                var captureResult = await _audioCaptureService
+                    .StartAsync(_settings.MicrophoneId, cancellationToken)
+                    .ConfigureAwait(false);
+                if (captureResult is OperationFailure<Unit> captureFailure)
+                {
+                    _audioCaptureService.DataAvailable -= OnAudioDataAvailable;
+                    if (streamingSession is not null)
+                    {
+                        streamingSession.InterimTranscriptReceived -= OnInterimTranscriptReceived;
+                        await streamingSession.DisposeAsync().ConfigureAwait(false);
+                    }
+
+                    cancellation.Cancel();
+                    cancellation.Dispose();
+                    _session = null;
+                    await PublishTerminalAndIdleAsync(DictationSessionState.Error, captureFailure.Error)
+                        .ConfigureAwait(false);
+                    return false;
+                }
+
                 await TransitionAsync(DictationSessionState.Listening, null, cancellationToken)
                     .ConfigureAwait(false);
                 return true;
             }
             catch
             {
-                createdSession.Cancellation.Cancel();
-                createdSession.Cancellation.Dispose();
+                _audioCaptureService.DataAvailable -= OnAudioDataAvailable;
+                if (streamingSession is not null)
+                {
+                    streamingSession.InterimTranscriptReceived -= OnInterimTranscriptReceived;
+                    await streamingSession.DisposeAsync().ConfigureAwait(false);
+                }
+
+                cancellation.Cancel();
+                cancellation.Dispose();
                 _session = null;
                 _state = DictationSessionState.Idle;
                 await _audioCaptureService.CancelAsync(CancellationToken.None).ConfigureAwait(false);
@@ -142,9 +194,21 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
                 _settings.LanguageMode,
                 _settings.LocaleHints,
                 _settings.TrimTranscript);
-            var transcriptionResult = await _speechToTextProvider
-                .TranscribeAsync(recording, options, linkedCancellation.Token)
-                .ConfigureAwait(false);
+
+            OperationResult<TranscriptionOutput> transcriptionResult;
+            if (session.StreamingSession is not null)
+            {
+                transcriptionResult = await session.StreamingSession
+                    .CompleteAsync(linkedCancellation.Token)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                transcriptionResult = await _speechToTextProvider
+                    .TranscribeAsync(recording, options, linkedCancellation.Token)
+                    .ConfigureAwait(false);
+            }
+
             if (transcriptionResult is OperationFailure<TranscriptionOutput> transcriptionFailure)
             {
                 terminalError = transcriptionFailure.Error;
@@ -197,6 +261,13 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
         }
         finally
         {
+            _audioCaptureService.DataAvailable -= OnAudioDataAvailable;
+            if (session.StreamingSession is not null)
+            {
+                session.StreamingSession.InterimTranscriptReceived -= OnInterimTranscriptReceived;
+                await session.StreamingSession.DisposeAsync().ConfigureAwait(false);
+            }
+
             if (recording is not null)
             {
                 await recording.Content.DisposeAsync().ConfigureAwait(false);
@@ -230,6 +301,14 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
 
         try
         {
+            _audioCaptureService.DataAvailable -= OnAudioDataAvailable;
+            if (session.StreamingSession is not null)
+            {
+                session.StreamingSession.InterimTranscriptReceived -= OnInterimTranscriptReceived;
+                await session.StreamingSession.CancelAsync(cancellationToken).ConfigureAwait(false);
+                await session.StreamingSession.DisposeAsync().ConfigureAwait(false);
+            }
+
             await _audioCaptureService.CancelAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -260,6 +339,45 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
         _disposed = true;
         _gate.Dispose();
         await _audioCaptureService.DisposeAsync().ConfigureAwait(false);
+    }
+
+    private void OnAudioDataAvailable(object? sender, AudioChunkAvailableEventArgs args)
+    {
+        var session = _session;
+        if (session?.StreamingSession is null || session.Cancellation.IsCancellationRequested)
+        {
+            return;
+        }
+
+        _ = SendAudioChunkSafelyAsync(session.StreamingSession, args.Data, session.Cancellation);
+    }
+
+    private static async Task SendAudioChunkSafelyAsync(
+        IStreamingSpeechToTextSession streamingSession,
+        ReadOnlyMemory<byte> data,
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await streamingSession.SendAudioChunkAsync(data, cancellation.Token).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            cancellation.Cancel();
+        }
+    }
+
+    private void OnInterimTranscriptReceived(object? sender, string interimText)
+    {
+        if (_session is not null)
+        {
+            StateChanged?.Invoke(this, new SessionStateChangedEventArgs(
+                _state,
+                _state,
+                error: null,
+                interimTranscript: interimText));
+            _ = _statusSink.PublishInterimTranscriptAsync(interimText, CancellationToken.None).AsTask();
+        }
     }
 
     private async Task FinalizeSessionAsync(
@@ -327,5 +445,6 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
     private sealed record SessionContext(
         Guid Id,
         TargetWindow Target,
-        CancellationTokenSource Cancellation);
+        CancellationTokenSource Cancellation,
+        IStreamingSpeechToTextSession? StreamingSession = null);
 }

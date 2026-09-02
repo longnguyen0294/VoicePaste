@@ -103,4 +103,35 @@ public sealed class JsonSettingsStoreTests
             }
         }
     }
+
+    [TestMethod]
+    public async Task UtSet004RoundTripsRealtimeDictationModeSetting()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VoicePaste.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var path = Path.Combine(root, "settings.json");
+            var store = new JsonSettingsStore(path);
+            var expected = AppSettings.Default with
+            {
+                DictationMode = DictationMode.Realtime,
+            };
+
+            await store.SaveAsync(expected, CancellationToken.None);
+            var actual = await store.LoadAsync(CancellationToken.None);
+
+            Assert.AreEqual(DictationMode.Realtime, actual.DictationMode);
+        }
+        finally
+        {
+            var expectedParent = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VoicePaste.Tests")) +
+                                 Path.DirectorySeparatorChar;
+            var resolved = Path.GetFullPath(root);
+            if (resolved.StartsWith(expectedParent, StringComparison.OrdinalIgnoreCase))
+            {
+                Directory.Delete(resolved, recursive: true);
+            }
+        }
+    }
 }
