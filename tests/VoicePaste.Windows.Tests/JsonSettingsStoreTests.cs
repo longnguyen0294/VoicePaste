@@ -70,4 +70,37 @@ public sealed class JsonSettingsStoreTests
             }
         }
     }
+
+    [TestMethod]
+    public async Task UtSet003RoundTripsLeftControlHotkeySetting()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "VoicePaste.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var path = Path.Combine(root, "settings.json");
+            var store = new JsonSettingsStore(path);
+            var expected = AppSettings.Default with
+            {
+                Hotkey = HotkeyGesture.LeftControl,
+            };
+
+            await store.SaveAsync(expected, CancellationToken.None);
+            var actual = await store.LoadAsync(CancellationToken.None);
+
+            Assert.AreEqual(expected.Hotkey, actual.Hotkey);
+            Assert.AreEqual(KeySide.Left, actual.Hotkey.Trigger.Side);
+            Assert.IsFalse(actual.Hotkey.Trigger.IsExtended);
+        }
+        finally
+        {
+            var expectedParent = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "VoicePaste.Tests")) +
+                                 Path.DirectorySeparatorChar;
+            var resolved = Path.GetFullPath(root);
+            if (resolved.StartsWith(expectedParent, StringComparison.OrdinalIgnoreCase))
+            {
+                Directory.Delete(resolved, recursive: true);
+            }
+        }
+    }
 }

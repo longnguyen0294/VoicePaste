@@ -46,7 +46,20 @@ public sealed record PhysicalKey(
 
 public sealed record HotkeyGesture(
     PhysicalKey Trigger,
-    KeyModifiers RequiredModifiers);
+    KeyModifiers RequiredModifiers)
+{
+    public static HotkeyGesture RightControl { get; } = new(
+        new PhysicalKey(VirtualKey.Control, 0x1D, IsExtended: true, KeySide.Right),
+        KeyModifiers.None);
+
+    public static HotkeyGesture LeftControl { get; } = new(
+        new PhysicalKey(VirtualKey.Control, 0x1D, IsExtended: false, KeySide.Left),
+        KeyModifiers.None);
+
+    public static HotkeyGesture Escape { get; } = new(
+        new PhysicalKey(VirtualKey.Escape, 0x01, IsExtended: false, KeySide.None),
+        KeyModifiers.None);
+}
 
 public sealed record TargetWindow(
     nint Handle,
@@ -203,12 +216,8 @@ public sealed record AppSettings(
 
     public static AppSettings Default { get; } = new(
         CurrentSchemaVersion,
-        new HotkeyGesture(
-            new PhysicalKey(VirtualKey.Control, 0x1D, IsExtended: true, KeySide.Right),
-            KeyModifiers.None),
-        new HotkeyGesture(
-            new PhysicalKey(VirtualKey.Escape, 0x01, IsExtended: false, KeySide.None),
-            KeyModifiers.None),
+        HotkeyGesture.RightControl,
+        HotkeyGesture.Escape,
         "default",
         LanguageMode.VietnameseEnglishMixed,
         new ReadOnlyCollection<string>(["vi-VN", "en-US"]),

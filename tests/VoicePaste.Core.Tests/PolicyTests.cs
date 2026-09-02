@@ -32,6 +32,27 @@ public sealed class PolicyTests
     }
 
     [TestMethod]
+    public void UtHotkey004LeftControlGestureIsValidAndDistinguishableFromRightControl()
+    {
+        var left = HotkeyGesture.LeftControl;
+        var right = HotkeyGesture.RightControl;
+        var escape = HotkeyGesture.Escape;
+
+        Assert.AreNotEqual(left, right);
+        Assert.AreEqual(VirtualKey.Control, left.Trigger.VirtualKey);
+        Assert.AreEqual(KeySide.Left, left.Trigger.Side);
+        Assert.IsFalse(left.Trigger.IsExtended);
+        Assert.AreEqual(0x1D, left.Trigger.ScanCode);
+        Assert.AreEqual(KeyModifiers.None, left.RequiredModifiers);
+
+        var validResult = HotkeyBindingValidator.Validate(left, escape);
+        var conflictResult = HotkeyBindingValidator.Validate(left, left);
+
+        Assert.IsInstanceOfType<OperationSuccess<HotkeyGesture>>(validResult);
+        Assert.IsInstanceOfType<OperationFailure<HotkeyGesture>>(conflictResult);
+    }
+
+    [TestMethod]
     public void UtAudio001UsesThreeHundredMillisecondMinimumWithoutMaximum()
     {
         Assert.IsFalse(RecordingDurationPolicy.IsUsable(TimeSpan.FromMilliseconds(299)));

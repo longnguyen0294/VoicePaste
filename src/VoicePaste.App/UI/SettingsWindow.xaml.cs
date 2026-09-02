@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using VoicePaste.App.Composition;
@@ -12,24 +13,104 @@ public partial class SettingsWindow : Window
     private readonly AppStatusController _statusController;
     private readonly IMicrophoneCatalog _microphoneCatalog;
     private readonly ICredentialStore _credentialStore;
+    private readonly ISettingsStore _settingsStore;
+    private readonly Func<HotkeyGesture, Task>? _hotkeyChangedCallback;
     private readonly string _credentialReference;
+    private AppSettings _appSettings;
     private IReadOnlyList<StoredCredentialDescriptor> _storedCredentials = [];
     private bool _credentialManagementBusy;
     private bool _allowClose;
+    private bool _isInitializing;
 
     internal SettingsWindow(
         AppStatusController statusController,
         IMicrophoneCatalog microphoneCatalog,
         ICredentialStore credentialStore,
+        ISettingsStore settingsStore,
+        AppSettings appSettings,
+        Func<HotkeyGesture, Task>? hotkeyChangedCallback,
         string credentialReference)
     {
         _statusController = statusController;
         _microphoneCatalog = microphoneCatalog;
         _credentialStore = credentialStore;
+        _settingsStore = settingsStore;
+        _appSettings = appSettings;
+        _hotkeyChangedCallback = hotkeyChangedCallback;
         _credentialReference = credentialReference;
         InitializeComponent();
+        InitializeHotkeySelection();
         Loaded += OnLoaded;
         Closing += OnClosing;
+    }
+
+    internal void UpdateSettings(AppSettings settings)
+    {
+        _appSettings = settings;
+        InitializeHotkeySelection();
+    }
+
+    private void InitializeHotkeySelection()
+    {
+        _isInitializing = true;
+        try
+        {
+            if (_appSettings.Hotkey.Trigger.Side == KeySide.Left)
+            {
+                LeftCtrlRadioButton.IsChecked = true;
+            }
+            else
+            {
+                RightCtrlRadioButton.IsChecked = true;
+            }
+        }
+        finally
+        {
+            _isInitializing = false;
+        }
+    }
+
+    private async void RecordHotkey_Checked(object sender, RoutedEventArgs args)
+    {
+        if (_isInitializing)
+        {
+            return;
+        }
+
+        var targetGesture = LeftCtrlRadioButton.IsChecked == true
+            ? HotkeyGesture.LeftControl
+            : HotkeyGesture.RightControl;
+
+        if (_appSettings.Hotkey == targetGesture)
+        {
+            return;
+        }
+
+        var validation = HotkeyBindingValidator.Validate(targetGesture, _appSettings.CancelHotkey);
+        if (validation is OperationFailure<HotkeyGesture> failure)
+        {
+            HotkeyStatusText.Text = $"Selected record button is invalid: {failure.Error.UserMessageKey}";
+            return;
+        }
+
+        try
+        {
+            var updatedSettings = _appSettings with { Hotkey = targetGesture };
+            await _settingsStore.SaveAsync(updatedSettings, CancellationToken.None).ConfigureAwait(true);
+            _appSettings = updatedSettings;
+
+            if (_hotkeyChangedCallback is not null)
+            {
+                await _hotkeyChangedCallback(targetGesture).ConfigureAwait(true);
+            }
+
+            var keyName = targetGesture.Trigger.Side == KeySide.Left ? "Left Control" : "Right Control";
+            HotkeyStatusText.Text = $"Record button set to {keyName}.";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Win32Exception)
+        {
+            HotkeyStatusText.Text = "The selected record button could not be saved.";
+        }
     }
 
     internal void UpdateState(DictationSessionState state, OperationError? operationError)

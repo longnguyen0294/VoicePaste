@@ -21,7 +21,7 @@ internal sealed class AppHost : IAsyncDisposable
     private readonly TrayIconController _tray;
     private readonly StatusOverlayWindow _overlay;
     private readonly SettingsWindow _settings;
-    private readonly AppSettings _appSettings;
+    private AppSettings _appSettings;
     private bool _paused;
     private bool _disposed;
 
@@ -93,6 +93,13 @@ internal sealed class AppHost : IAsyncDisposable
             status,
             new WasapiMicrophoneCatalog(),
             credentialStore,
+            settingsStore,
+            settings,
+            gesture =>
+            {
+                host?.SetRecordHotkey(gesture);
+                return Task.CompletedTask;
+            },
             providerOptions.CredentialReference);
         status.Attach(overlay, tray, settingsWindow);
         host = new AppHost(
@@ -164,6 +171,21 @@ internal sealed class AppHost : IAsyncDisposable
         }
 
         _settings.Activate();
+    }
+
+    public void SetRecordHotkey(HotkeyGesture hotkey)
+    {
+        if (_appSettings.Hotkey == hotkey)
+        {
+            return;
+        }
+
+        _appSettings = _appSettings with { Hotkey = hotkey };
+        if (!_paused)
+        {
+            _hotkeyService.Unregister();
+            _hotkeyService.Start(_appSettings.Hotkey);
+        }
     }
 
     private void TogglePause()

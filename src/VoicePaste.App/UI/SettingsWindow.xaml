@@ -13,7 +13,7 @@
             <TextBlock Margin="0,4,0,16"
                        Foreground="#555"
                        TextWrapping="Wrap"
-                       Text="Switch to an editable field in another application. Hold Right Ctrl to record; release to process." />
+                       Text="Switch to an editable field in another application. Hold the configured record button (Right Ctrl or Left Ctrl) to record; release to process." />
 
             <Border Padding="12" Background="#E8F1FF" CornerRadius="6">
                 <StackPanel>
@@ -22,6 +22,26 @@
                                Text="Recognition sends recorded audio to the OpenAI API. The provider is implemented, but its mixed Vietnamese-English acceptance corpus gate is still pending." />
                 </StackPanel>
             </Border>
+
+            <TextBlock Margin="0,18,0,4" FontWeight="SemiBold" Text="Record button (push-to-talk)" />
+            <TextBlock Margin="0,0,0,8" Foreground="#555" TextWrapping="Wrap"
+                       Text="Choose which Control key to press and hold while speaking." />
+            <RadioButton x:Name="RightCtrlRadioButton"
+                         Content="Right Control (default)"
+                         GroupName="RecordHotkeyGroup"
+                         Checked="RecordHotkey_Checked"
+                         AutomationProperties.Name="Right Control record button" />
+            <RadioButton x:Name="LeftCtrlRadioButton"
+                         Margin="0,6,0,0"
+                         Content="Left Control"
+                         GroupName="RecordHotkeyGroup"
+                         Checked="RecordHotkey_Checked"
+                         AutomationProperties.Name="Left Control record button" />
+            <TextBlock x:Name="HotkeyStatusText"
+                       Margin="0,6,0,0"
+                       Foreground="#555"
+                       TextWrapping="Wrap"
+                       AutomationProperties.Name="Record button status" />
 
             <TextBlock Margin="0,18,0,4" FontWeight="SemiBold" Text="OpenAI API key" />
             <PasswordBox x:Name="ApiKeyBox"
@@ -97,7 +117,7 @@
             </StackPanel>
 
             <TextBlock Margin="0,18,0,0" Foreground="#666" TextWrapping="Wrap"
-                       Text="Right Ctrl is observed through pass-through Raw Input. VoicePaste does not suppress the key in the foreground application and never steals focus to force a paste." />
+                       Text="The configured record button is observed through pass-through Raw Input. VoicePaste does not suppress the key in the foreground application and never steals focus to force a paste." />
         </StackPanel>
     </ScrollViewer>
 </Window>
