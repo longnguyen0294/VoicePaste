@@ -46,6 +46,7 @@ public sealed class WasapiMicrophoneCatalog : IMicrophoneCatalog
 public sealed class WasapiAudioCaptureService : IAudioCaptureService
 {
     private static readonly TimeSpan CancellationStopTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan NormalStopTimeout = TimeSpan.FromSeconds(5);
     private readonly string _audioRoot;
     private readonly IFreeSpaceProbe _freeSpaceProbe;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -164,14 +165,39 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
             RequestCaptureStop();
             if (_recordingStopped is not null)
             {
-                var stopFailure = await _recordingStopped.Task
-                    .WaitAsync(cancellationToken)
-                    .ConfigureAwait(false);
-                _captureFailure ??= stopFailure;
+                if (!await AudioCaptureStopPolicy
+                        .CompletesWithinAsync(
+                            _recordingStopped.Task,
+                            NormalStopTimeout,
+                            cancellationToken)
+                        .ConfigureAwait(false))
+                {
+                    await DeleteCurrentRecordingAsync().ConfigureAwait(false);
+                    return OperationResult.Failure<AudioRecording>(new OperationError(
+                        ErrorCategory.MicrophoneUnavailable,
+                        "audio.stop_timed_out",
+                        IsRetryable: true,
+                        "wasapi_recording_stopped_missing"));
+                }
+
+                _captureFailure ??= await _recordingStopped.Task.ConfigureAwait(false);
             }
 
             _sink.Complete();
-            await _sink.Completion.WaitAsync(cancellationToken).ConfigureAwait(false);
+            if (!await AudioCaptureStopPolicy
+                    .CompletesWithinAsync(
+                        _sink.Completion,
+                        NormalStopTimeout,
+                        cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                await DeleteCurrentRecordingAsync().ConfigureAwait(false);
+                return OperationResult.Failure<AudioRecording>(new OperationError(
+                    ErrorCategory.StorageUnavailable,
+                    "audio.flush_timed_out",
+                    IsRetryable: true,
+                    "audio_writer_did_not_finish"));
+            }
             var failure = _captureFailure ?? _sink.Failure;
             var paths = _sink.ChunkPaths;
             var byteCount = _sink.BytesWritten;

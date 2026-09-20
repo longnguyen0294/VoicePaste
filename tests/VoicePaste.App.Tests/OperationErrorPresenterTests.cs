@@ -51,4 +51,18 @@ public sealed class OperationErrorPresenterTests
         StringAssert.Contains(message, "direct Unicode insertion");
         StringAssert.Contains(message, "manual copy");
     }
+
+    [TestMethod]
+    [DataRow("audio.stop_timed_out", "microphone did not finish stopping")]
+    [DataRow("audio.flush_timed_out", "recording could not be saved")]
+    public void UtStatus002CaptureTimeoutExplainsReset(string messageKey, string expectedText)
+    {
+        var message = OperationErrorPresenter.ToUserMessage(new OperationError(
+            ErrorCategory.MicrophoneUnavailable,
+            messageKey,
+            IsRetryable: true));
+
+        StringAssert.Contains(message, expectedText);
+        StringAssert.Contains(message, "try again");
+    }
 }

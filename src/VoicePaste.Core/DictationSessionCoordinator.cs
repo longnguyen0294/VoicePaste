@@ -173,6 +173,10 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
         {
             var stopResult = await _audioCaptureService.StopAsync(linkedCancellation.Token)
                 .ConfigureAwait(false);
+            _audioCaptureService.DataAvailable -= OnAudioDataAvailable;
+            await session
+                .StopAcceptingAudioAndDrainAsync(linkedCancellation.Token)
+                .ConfigureAwait(false);
             if (stopResult is OperationFailure<AudioRecording> stopFailure)
             {
                 terminalError = stopFailure.Error;
@@ -262,6 +266,10 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
         finally
         {
             _audioCaptureService.DataAvailable -= OnAudioDataAvailable;
+            session.Cancellation.Cancel();
+            await session
+                .StopAcceptingAudioAndDrainAsync(CancellationToken.None)
+                .ConfigureAwait(false);
             if (session.StreamingSession is not null)
             {
                 session.StreamingSession.InterimTranscriptReceived -= OnInterimTranscriptReceived;
@@ -302,6 +310,9 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
         try
         {
             _audioCaptureService.DataAvailable -= OnAudioDataAvailable;
+            await session
+                .StopAcceptingAudioAndDrainAsync(CancellationToken.None)
+                .ConfigureAwait(false);
             if (session.StreamingSession is not null)
             {
                 session.StreamingSession.InterimTranscriptReceived -= OnInterimTranscriptReceived;
@@ -349,7 +360,7 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
             return;
         }
 
-        _ = SendAudioChunkSafelyAsync(session.StreamingSession, args.Data, session.Cancellation);
+        session.EnqueueAudioChunk(args.Data);
     }
 
     private static async Task SendAudioChunkSafelyAsync(
@@ -442,9 +453,58 @@ public sealed class DictationSessionCoordinator : IDictationSessionCoordinator
         await _statusSink.PublishAsync(next, error, cancellationToken).ConfigureAwait(false);
     }
 
-    private sealed record SessionContext(
-        Guid Id,
-        TargetWindow Target,
-        CancellationTokenSource Cancellation,
-        IStreamingSpeechToTextSession? StreamingSession = null);
+    private sealed class SessionContext(
+        Guid id,
+        TargetWindow target,
+        CancellationTokenSource cancellation,
+        IStreamingSpeechToTextSession? streamingSession = null)
+    {
+        private readonly object _audioSendGate = new();
+        private Task _audioSendTail = Task.CompletedTask;
+        private bool _acceptsAudio = true;
+
+        public Guid Id { get; } = id;
+
+        public TargetWindow Target { get; } = target;
+
+        public CancellationTokenSource Cancellation { get; } = cancellation;
+
+        public IStreamingSpeechToTextSession? StreamingSession { get; } = streamingSession;
+
+        public void EnqueueAudioChunk(ReadOnlyMemory<byte> data)
+        {
+            if (StreamingSession is null || data.IsEmpty)
+            {
+                return;
+            }
+
+            lock (_audioSendGate)
+            {
+                if (!_acceptsAudio)
+                {
+                    return;
+                }
+
+                _audioSendTail = _audioSendTail
+                    .ContinueWith(
+                        _ => SendAudioChunkSafelyAsync(StreamingSession, data, Cancellation),
+                        CancellationToken.None,
+                        TaskContinuationOptions.ExecuteSynchronously,
+                        TaskScheduler.Default)
+                    .Unwrap();
+            }
+        }
+
+        public Task StopAcceptingAudioAndDrainAsync(CancellationToken cancellationToken)
+        {
+            Task audioSendTail;
+            lock (_audioSendGate)
+            {
+                _acceptsAudio = false;
+                audioSendTail = _audioSendTail;
+            }
+
+            return audioSendTail.WaitAsync(cancellationToken);
+        }
+    }
 }

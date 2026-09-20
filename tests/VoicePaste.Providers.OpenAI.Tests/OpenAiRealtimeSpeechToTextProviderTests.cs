@@ -24,7 +24,7 @@ public sealed class OpenAiRealtimeSpeechToTextProviderTests
         Assert.AreEqual("gpt-live-transcribe", OpenAiRealtimeProviderOptions.Default.Model);
         StringAssert.Contains(
             OpenAiRealtimeProviderOptions.Default.WebSocketEndpoint.Query,
-            "model=gpt-live-transcribe");
+            "intent=transcription");
         Assert.IsTrue(provider.Capabilities.SupportsStreaming);
         Assert.IsTrue(provider.Capabilities.SendsAudioOffDevice);
         Assert.IsTrue(provider.Capabilities.LocaleHints.Contains("vi"));

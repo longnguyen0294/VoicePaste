@@ -17,7 +17,7 @@ public sealed record OpenAiRealtimeProviderOptions(
     public const string DefaultCredentialReference = "openai-api-key";
 
     public static OpenAiRealtimeProviderOptions Default { get; } = new(
-        new Uri("wss://api.openai.com/v1/realtime?model=" + DefaultModel, UriKind.Absolute),
+        new Uri("wss://api.openai.com/v1/realtime?intent=transcription", UriKind.Absolute),
         DefaultModel,
         DefaultCredentialReference,
         TimeSpan.FromSeconds(10),
@@ -118,6 +118,7 @@ public sealed class OpenAiRealtimeSpeechToTextProvider : IStreamingSpeechToTextP
         catch (Exception exception)
         {
             webSocket.Dispose();
+            DiagnosticLog.LogException("realtime.connect_failed", exception);
             return OperationResult.Failure<IStreamingSpeechToTextSession>(new OperationError(
                 ErrorCategory.NetworkUnavailable,
                 "provider.network_unavailable",
@@ -147,6 +148,7 @@ public sealed class OpenAiRealtimeSpeechToTextProvider : IStreamingSpeechToTextP
         catch (Exception exception) when (exception is WebSocketException or IOException)
         {
             await session.DisposeAsync().ConfigureAwait(false);
+            DiagnosticLog.LogException("realtime.session_init_failed", exception);
             return OperationResult.Failure<IStreamingSpeechToTextSession>(new OperationError(
                 ErrorCategory.NetworkUnavailable,
                 "provider.network_unavailable",
@@ -156,6 +158,7 @@ public sealed class OpenAiRealtimeSpeechToTextProvider : IStreamingSpeechToTextP
         catch (Exception exception)
         {
             await session.DisposeAsync().ConfigureAwait(false);
+            DiagnosticLog.LogException("realtime.session_init_failed_other", exception);
             return OperationResult.Failure<IStreamingSpeechToTextSession>(new OperationError(
                 ErrorCategory.ProviderFailure,
                 "provider.session_init_failed",
@@ -236,7 +239,18 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
             },
         };
 
-        await SendJsonMessageAsync(sessionUpdate, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await SendJsonMessageAsync(sessionUpdate, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is WebSocketException or IOException)
+        {
+            // The server may have already rejected the connection (auth, model access, etc.)
+            // and closed the socket before this send went out. The receive loop observes that
+            // rejection first and records the real reason in _initialization; defer to it
+            // below instead of masking it with a generic transport error here.
+            DiagnosticLog.LogException("realtime.session_update_send_failed", exception);
+        }
 
         using var initializationTimeoutCts = new CancellationTokenSource(_options.ConnectTimeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
@@ -263,7 +277,7 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_committed || pcmChunk.IsEmpty)
+        if (pcmChunk.IsEmpty)
         {
             return;
         }
@@ -274,19 +288,26 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
             audio = Convert.ToBase64String(pcmChunk.Span),
         };
 
-        await SendJsonMessageAsync(appendMessage, cancellationToken).ConfigureAwait(false);
+        await _sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_committed)
+            {
+                return;
+            }
+
+            await SendJsonMessageCoreAsync(appendMessage, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _sendLock.Release();
+        }
     }
 
     public async Task<OperationResult<TranscriptionOutput>> CompleteAsync(
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_committed)
-        {
-            return await _completion.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        _committed = true;
         using var responseTimeoutCts = new CancellationTokenSource(_options.ResponseTimeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
@@ -295,10 +316,22 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
 
         try
         {
-            await SendJsonMessageAsync(
-                    new { type = "input_audio_buffer.commit" },
-                    linkedCts.Token)
-                .ConfigureAwait(false);
+            await _sendLock.WaitAsync(linkedCts.Token).ConfigureAwait(false);
+            try
+            {
+                if (!_committed)
+                {
+                    _committed = true;
+                    await SendJsonMessageCoreAsync(
+                            new { type = "input_audio_buffer.commit" },
+                            linkedCts.Token)
+                        .ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                _sendLock.Release();
+            }
 
             return await _completion.Task.WaitAsync(linkedCts.Token).ConfigureAwait(false);
         }
@@ -396,28 +429,33 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
 
     private async Task SendJsonMessageAsync<T>(T payload, CancellationToken cancellationToken)
     {
-        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(payload, JsonOptions);
         await _sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_webSocket.State != WebSocketState.Open)
-            {
-                throw new WebSocketException(
-                    WebSocketError.InvalidState,
-                    $"Realtime WebSocket is {_webSocket.State}.");
-            }
-
-            await _webSocket.SendAsync(
-                    jsonBytes,
-                    WebSocketMessageType.Text,
-                    endOfMessage: true,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            await SendJsonMessageCoreAsync(payload, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             _sendLock.Release();
         }
+    }
+
+    private async Task SendJsonMessageCoreAsync<T>(T payload, CancellationToken cancellationToken)
+    {
+        if (_webSocket.State != WebSocketState.Open)
+        {
+            throw new WebSocketException(
+                WebSocketError.InvalidState,
+                $"Realtime WebSocket is {_webSocket.State}.");
+        }
+
+        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(payload, JsonOptions);
+        await _webSocket.SendAsync(
+                jsonBytes,
+                WebSocketMessageType.Text,
+                endOfMessage: true,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
@@ -437,6 +475,10 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
                         .ConfigureAwait(false);
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
+                        DiagnosticLog.LogMessage(
+                            "realtime.websocket_closed",
+                            $"CloseStatus={_webSocket.CloseStatus} " +
+                            $"Description=\"{_webSocket.CloseStatusDescription}\"");
                         SetTransportFailure("realtime_websocket_closed");
                         return;
                     }
@@ -478,7 +520,15 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
                 return;
             }
 
-            switch (typeElement.GetString())
+            var eventType = typeElement.GetString();
+            if (eventType is "error" or "conversation.item.input_audio_transcription.failed")
+            {
+                DiagnosticLog.LogMessage(
+                    $"realtime.server_event.{eventType}",
+                    root.GetRawText());
+            }
+
+            switch (eventType)
             {
                 case "session.updated":
                     _initialization.TrySetResult(OperationResult.Success(Unit.Value));

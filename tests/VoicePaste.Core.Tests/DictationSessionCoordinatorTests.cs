@@ -131,6 +131,59 @@ public sealed class DictationSessionCoordinatorTests
         Assert.IsTrue(fixture.Status.InterimTranscripts.Contains("Xin chào realtime"));
     }
 
+    [TestMethod]
+    public async Task UtState006RealtimeDrainsQueuedAudioBeforeCompletingAndPasting()
+    {
+        var fakeStreamingSession = new FakeStreamingSession(
+            "Queued realtime transcript",
+            blockAudioSend: true);
+        var fixture = new CoordinatorFixture
+        {
+            StreamingProvider = new FakeStreamingProvider(fakeStreamingSession),
+            Settings = AppSettings.Default with { DictationMode = DictationMode.Realtime },
+        };
+
+        await using var coordinator = fixture.CreateCoordinator();
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+
+        fixture.Audio.EmitData(new byte[160]);
+        Assert.IsTrue(fakeStreamingSession.AudioSendStarted);
+
+        var completion = coordinator.CompleteAsync();
+        Assert.IsFalse(fakeStreamingSession.CompleteWasCalled);
+        Assert.IsFalse(completion.IsCompleted);
+
+        fakeStreamingSession.ReleaseAudioSend();
+        await completion;
+
+        Assert.IsTrue(fakeStreamingSession.CompleteWasCalled);
+        Assert.AreEqual(1, fixture.Insertion.CallCount);
+        Assert.AreEqual("Queued realtime transcript", fixture.Insertion.LastText);
+        Assert.AreEqual(DictationSessionState.Idle, coordinator.State);
+    }
+
+    [TestMethod]
+    public async Task UtAudio004ShortTapReturnsToIdleAndAllowsAnotherSession()
+    {
+        var fixture = new CoordinatorFixture();
+        fixture.Audio.Content = new FakeAudioContent(TimeSpan.FromMilliseconds(100));
+        await using var coordinator = fixture.CreateCoordinator();
+
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+        await coordinator.CompleteAsync();
+
+        Assert.AreEqual(DictationSessionState.Idle, coordinator.State);
+        Assert.AreEqual(0, fixture.Insertion.CallCount);
+        Assert.IsTrue(fixture.Audio.Content.Disposed);
+        Assert.IsTrue(fixture.Status.States.Any(entry =>
+            entry.State == DictationSessionState.Error &&
+            entry.Error?.UserMessageKey == "recording.too_short"));
+
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+        await coordinator.CancelAsync();
+        Assert.AreEqual(DictationSessionState.Idle, coordinator.State);
+    }
+
     private sealed class CoordinatorFixture
     {
         public FakeAudioCapture Audio { get; } = new();
@@ -177,7 +230,7 @@ public sealed class DictationSessionCoordinatorTests
         public void EmitData(byte[] bytes) =>
             DataAvailable?.Invoke(this, new AudioChunkAvailableEventArgs(bytes));
 
-        public FakeAudioContent Content { get; } = new(TimeSpan.FromSeconds(1));
+        public FakeAudioContent Content { get; set; } = new(TimeSpan.FromSeconds(1));
 
         public int StartCount { get; private set; }
 
@@ -246,22 +299,51 @@ public sealed class DictationSessionCoordinatorTests
             CancellationToken cancellationToken) => Task.FromResult(resultFactory());
     }
 
-    private sealed class FakeStreamingSession(string finalText) : IStreamingSpeechToTextSession
+    private sealed class FakeStreamingSession : IStreamingSpeechToTextSession
     {
+        private readonly string _finalText;
+        private readonly TaskCompletionSource? _audioSendRelease;
+
+        public FakeStreamingSession(string finalText, bool blockAudioSend = false)
+        {
+            _finalText = finalText;
+            if (blockAudioSend)
+            {
+                _audioSendRelease = new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+        }
+
         public event EventHandler<string>? InterimTranscriptReceived;
 
         public int ChunkCount { get; private set; }
 
+        public bool AudioSendStarted { get; private set; }
+
+        public bool CompleteWasCalled { get; private set; }
+
         public void EmitInterim(string text) => InterimTranscriptReceived?.Invoke(this, text);
 
-        public Task SendAudioChunkAsync(ReadOnlyMemory<byte> pcmChunk, CancellationToken cancellationToken)
+        public async Task SendAudioChunkAsync(
+            ReadOnlyMemory<byte> pcmChunk,
+            CancellationToken cancellationToken)
         {
             ChunkCount++;
-            return Task.CompletedTask;
+            AudioSendStarted = true;
+            if (_audioSendRelease is not null)
+            {
+                await _audioSendRelease.Task.WaitAsync(cancellationToken);
+            }
         }
 
-        public Task<OperationResult<TranscriptionOutput>> CompleteAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(OperationResult.Success(new TranscriptionOutput(finalText, "vi", TimeSpan.FromMilliseconds(5))));
+        public Task<OperationResult<TranscriptionOutput>> CompleteAsync(CancellationToken cancellationToken)
+        {
+            CompleteWasCalled = true;
+            return Task.FromResult(OperationResult.Success(
+                new TranscriptionOutput(_finalText, "vi", TimeSpan.FromMilliseconds(5))));
+        }
+
+        public void ReleaseAudioSend() => _audioSendRelease?.TrySetResult();
 
         public Task CancelAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 

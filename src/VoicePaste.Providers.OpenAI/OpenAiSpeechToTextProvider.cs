@@ -287,6 +287,7 @@ public sealed class OpenAiSpeechToTextProvider : ISpeechToTextProvider, IDisposa
                 return OperationResult.Failure<ProviderSegmentResult>(MapHttpError(statusCode, null));
             }
 
+            DiagnosticLog.LogException("standard.request_failed", exception);
             return OperationResult.Failure<ProviderSegmentResult>(new OperationError(
                 ErrorCategory.NetworkUnavailable,
                 "provider.network_unavailable",

@@ -51,11 +51,13 @@ record below or have exact executed evidence in `requirements-traceability.md`.
 |---|---|---|---|
 | UT-STATE-001 | State transitions | Valid primary and terminal transitions; terminal cleanup returns to `Idle` | FR-050, NFR-011 |
 | UT-STATE-002 | Session concurrency | Atomic single-session lease rejects overlapping and rapid hotkey sessions | FR-014, NFR-013 |
+| UT-LIFE-001 | Process concurrency | A Windows session can hold only one live VoicePaste application lease; a duplicate launch is rejected and a later launch succeeds after disposal | FR-014, NFR-013 |
 | UT-HOTKEY-001 | Press/release debounce | One press starts once; release stops once; repeats do not duplicate work | FR-010–011, NFR-013, NFR-020 |
 | UT-HOTKEY-002 | Binding validation | Unsafe, conflicting, empty, and valid gestures are classified correctly | FR-012–013, FR-015 |
 | UT-HOTKEY-003 | Right Ctrl identity | Default binding fires on Right Ctrl press/release and not Left Ctrl | FR-017 |
 | UT-HOTKEY-004 | Pass-through and interruption | Accepted Raw Input edges are not suppressed; lock/sleep/session/device interruption cancels uncertain held state and returns to `Idle` | FR-018, NFR-011, NFR-016 |
 | UT-AUDIO-001 | Duration policy | Captures below 300 ms are ignored and elapsed duration alone never stops an active held-key capture | FR-023–024 |
+| UT-AUDIO-004 | Short-tap and stop recovery | A sub-300-ms tap returns to `Idle` and permits the next session; missing WASAPI stop/flush completion is bounded, while cancellation remains distinct from timeout | FR-024, FR-026, NFR-011, NFR-013 |
 | UT-AUDIO-002 | Cleanup ownership | Completion, cancellation, timeout, and expiry release the audio lease | FR-025, FR-073, NFR-012 |
 | UT-AUDIO-003 | Bounded capture policy | Bounded channel preserves frame order; chunks stay at most five minutes; a breached 256 MiB reserve returns `StorageFull` and cleanup | FR-023, NFR-007, NFR-015 |
 | UT-STT-001 | Error normalization | No-speech, network, auth, quota, timeout, and provider errors map correctly | FR-035, NFR-010 |
@@ -70,6 +72,7 @@ record below or have exact executed evidence in `requirements-traceability.md`.
 | UT-STATUS-001 | Actionable error presentation | Internal message/diagnostic codes are hidden; target, network, privilege, and clipboard errors include a recovery action | FR-048, FR-054 |
 | UT-CRED-001 | Credential list filtering | Search credential metadata case-insensitively, mark the active reference, and never add a secret preview | FR-062, NFR-024 |
 | UT-STT-004 | Mixed-language orchestration | Ordered Vietnamese-English segments are sent/combined without manual language changes or lost transitions | FR-031, FR-039 |
+| UT-STT-005 | Realtime completion ordering | Queued audio sends drain before the realtime buffer is committed, final transcription completes, and insertion begins | FR-030, FR-042, NFR-011, NFR-013 |
 | UT-SET-001 | Settings validation | Right Ctrl and mixed-language defaults plus hotkey, microphone, language, and provider validation | FR-017, FR-039, FR-060–061 |
 | UT-SET-002 | Settings migration/reset | Older schema migration and reset preserve valid invariants | FR-060, FR-065 |
 | UT-PRIV-001 | Diagnostic redaction | Secrets, full transcript, paths, and clipboard payloads are not emitted | NFR-023–025 |

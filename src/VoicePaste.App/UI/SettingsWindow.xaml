@@ -3,117 +3,141 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="VoicePaste Settings"
         Width="560"
-        Height="680"
+        Height="700"
         MinWidth="480"
         MinHeight="420"
         WindowStartupLocation="CenterScreen">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20">
             <TextBlock FontSize="24" FontWeight="SemiBold" Text="VoicePaste" />
-            <TextBlock Margin="0,4,0,16"
+            <TextBlock Margin="0,4,0,12"
                        Foreground="#555"
                        TextWrapping="Wrap"
                        Text="Switch to an editable field in another application. Hold the configured record button (Right Ctrl or Left Ctrl) to record; release to process." />
 
-            <Border Padding="12" Background="#E8F1FF" CornerRadius="6">
-                <StackPanel>
-                    <TextBlock FontWeight="SemiBold" Text="OpenAI gpt-transcribe candidate" />
-                    <TextBlock Margin="0,4,0,0" TextWrapping="Wrap"
-                               Text="Recognition sends recorded audio to the OpenAI API. The provider is implemented, but its mixed Vietnamese-English acceptance corpus gate is still pending." />
-                </StackPanel>
-            </Border>
+            <TabControl Height="440">
+                <TabControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </TabControl.ItemsPanel>
+                <TabItem Header="General">
+                    <StackPanel Margin="10">
+                        <Border Padding="12" Background="#E8F1FF" CornerRadius="6">
+                            <StackPanel>
+                                <TextBlock FontWeight="SemiBold" Text="OpenAI gpt-transcribe candidate" />
+                                <TextBlock Margin="0,4,0,0" TextWrapping="Wrap"
+                                           Text="Recognition sends recorded audio to the OpenAI API. The provider is implemented, but its mixed Vietnamese-English acceptance corpus gate is still pending." />
+                            </StackPanel>
+                        </Border>
 
-            <TextBlock Margin="0,18,0,4" FontWeight="SemiBold" Text="Record button (push-to-talk)" />
-            <TextBlock Margin="0,0,0,8" Foreground="#555" TextWrapping="Wrap"
-                       Text="Choose which Control key to press and hold while speaking." />
-            <RadioButton x:Name="RightCtrlRadioButton"
-                         Content="Right Control (default)"
-                         GroupName="RecordHotkeyGroup"
-                         Checked="RecordHotkey_Checked"
-                         AutomationProperties.Name="Right Control record button" />
-            <RadioButton x:Name="LeftCtrlRadioButton"
-                         Margin="0,6,0,0"
-                         Content="Left Control"
-                         GroupName="RecordHotkeyGroup"
-                         Checked="RecordHotkey_Checked"
-                         AutomationProperties.Name="Left Control record button" />
-            <TextBlock x:Name="HotkeyStatusText"
-                       Margin="0,6,0,0"
-                       Foreground="#555"
-                       TextWrapping="Wrap"
-                       AutomationProperties.Name="Record button status" />
+                        <TextBlock Margin="0,14,0,4" FontWeight="SemiBold" Text="Record button (push-to-talk)" />
+                        <TextBlock Margin="0,0,0,8" Foreground="#555" TextWrapping="Wrap"
+                                   Text="Choose which Control key to press and hold while speaking." />
+                        <RadioButton x:Name="RightCtrlRadioButton"
+                                     Content="Right Control (default)"
+                                     GroupName="RecordHotkeyGroup"
+                                     Checked="RecordHotkey_Checked"
+                                     AutomationProperties.Name="Right Control record button" />
+                        <RadioButton x:Name="LeftCtrlRadioButton"
+                                     Margin="0,6,0,0"
+                                     Content="Left Control"
+                                     GroupName="RecordHotkeyGroup"
+                                     Checked="RecordHotkey_Checked"
+                                     AutomationProperties.Name="Left Control record button" />
+                        <TextBlock x:Name="HotkeyStatusText"
+                                   Margin="0,6,0,0"
+                                   Foreground="#555"
+                                   TextWrapping="Wrap"
+                                   AutomationProperties.Name="Record button status" />
 
-            <TextBlock Margin="0,18,0,4" FontWeight="SemiBold" Text="Dictation mode" />
-            <TextBlock Margin="0,0,0,8" Foreground="#555" TextWrapping="Wrap"
-                       Text="Choose how speech is transcribed and processed." />
-            <RadioButton x:Name="StandardModeRadioButton"
-                         Content="Standard Mode (gpt-transcribe REST — default)"
-                         GroupName="DictationModeGroup"
-                         Checked="DictationMode_Checked"
-                         AutomationProperties.Name="Standard batch dictation mode" />
-            <RadioButton x:Name="RealtimeModeRadioButton"
-                         Margin="0,6,0,0"
-                         Content="Realtime Mode (GPT Live Transcribe WebSocket)"
-                         GroupName="DictationModeGroup"
-                         Checked="DictationMode_Checked"
-                         AutomationProperties.Name="Realtime streaming dictation mode" />
-            <TextBlock x:Name="DictationModeStatusText"
-                       Margin="0,6,0,0"
-                       Foreground="#555"
-                       TextWrapping="Wrap"
-                       AutomationProperties.Name="Dictation mode status" />
-
-            <TextBlock Margin="0,18,0,4" FontWeight="SemiBold" Text="OpenAI API key" />
-            <PasswordBox x:Name="ApiKeyBox"
-                         MaxLength="1024"
-                         AutomationProperties.Name="OpenAI API key" />
-            <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
-                <Button Click="SaveApiKey_Click" Content="Save key securely" />
-                <Button Click="ClearApiKey_Click" Content="Remove key" />
-            </StackPanel>
-            <TextBlock x:Name="ApiKeyStatusText"
-                       Margin="0,4,0,0"
-                       Foreground="#555"
-                       TextWrapping="Wrap" />
-
-            <Expander Margin="0,14,0,0"
-                      Header="Saved VoicePaste API keys"
-                      IsExpanded="False"
-                      AutomationProperties.Name="Saved VoicePaste API key manager">
-                <StackPanel Margin="10">
-                    <TextBlock Foreground="#555"
-                               TextWrapping="Wrap"
-                               Text="Only credential names and saved dates are shown. Secret values are never displayed." />
-                    <TextBox x:Name="CredentialSearchBox"
-                             Margin="0,8,0,0"
-                             AutomationProperties.Name="Find saved API keys"
-                             TextChanged="CredentialSearchBox_TextChanged" />
-                    <TextBlock Margin="0,3,0,0" Foreground="#666" Text="Search by credential name" />
-                    <ListBox x:Name="SavedCredentialList"
-                             Margin="0,8,0,0"
-                             Height="100"
-                             DisplayMemberPath="DisplayText"
-                             SelectionChanged="SavedCredentialList_SelectionChanged"
-                             AutomationProperties.Name="Saved VoicePaste API keys" />
-                    <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
-                        <Button x:Name="RefreshCredentialsButton"
-                                Click="RefreshCredentials_Click"
-                                Content="Refresh" />
-                        <Button x:Name="DeleteSelectedCredentialButton"
-                                Margin="8,0,0,0"
-                                Click="DeleteSelectedCredential_Click"
-                                Content="Delete selected"
-                                IsEnabled="False" />
+                        <TextBlock Margin="0,18,0,4" FontWeight="SemiBold" Text="Dictation mode" />
+                        <TextBlock Margin="0,0,0,8" Foreground="#555" TextWrapping="Wrap"
+                                   Text="Choose how speech is transcribed and processed." />
+                        <RadioButton x:Name="StandardModeRadioButton"
+                                     Content="Standard Mode (gpt-transcribe REST — default)"
+                                     GroupName="DictationModeGroup"
+                                     Checked="DictationMode_Checked"
+                                     AutomationProperties.Name="Standard batch dictation mode" />
+                        <RadioButton x:Name="RealtimeModeRadioButton"
+                                     Margin="0,6,0,0"
+                                     Content="Realtime Mode (GPT Live Transcribe WebSocket)"
+                                     GroupName="DictationModeGroup"
+                                     Checked="DictationMode_Checked"
+                                     AutomationProperties.Name="Realtime streaming dictation mode" />
+                        <TextBlock x:Name="DictationModeStatusText"
+                                   Margin="0,6,0,0"
+                                   Foreground="#555"
+                                   TextWrapping="Wrap"
+                                   AutomationProperties.Name="Dictation mode status" />
                     </StackPanel>
-                    <TextBlock x:Name="CredentialManagerStatusText"
-                               Margin="0,4,0,0"
-                               Foreground="#555"
-                               TextWrapping="Wrap"
-                               AutomationProperties.Name="API key manager status" />
-                </StackPanel>
-            </Expander>
+                </TabItem>
 
-            <TextBlock Margin="0,18,0,4" FontWeight="SemiBold" Text="Current state" />
+                <TabItem Header="API Key">
+                    <StackPanel Margin="10">
+                        <TextBlock FontWeight="SemiBold" Text="OpenAI API key" />
+                        <PasswordBox x:Name="ApiKeyBox"
+                                     Margin="0,4,0,0"
+                                     MaxLength="1024"
+                                     AutomationProperties.Name="OpenAI API key" />
+                        <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
+                            <Button Click="SaveApiKey_Click" Content="Save key securely" />
+                            <Button Click="ClearApiKey_Click" Content="Remove key" />
+                        </StackPanel>
+                        <TextBlock x:Name="ApiKeyStatusText"
+                                   Margin="0,4,0,0"
+                                   Foreground="#555"
+                                   TextWrapping="Wrap" />
+
+                        <Expander Margin="0,14,0,0"
+                                  Header="Saved VoicePaste API keys"
+                                  IsExpanded="False"
+                                  AutomationProperties.Name="Saved VoicePaste API key manager">
+                            <StackPanel Margin="10">
+                                <TextBlock Foreground="#555"
+                                           TextWrapping="Wrap"
+                                           Text="Only credential names and saved dates are shown. Secret values are never displayed." />
+                                <TextBox x:Name="CredentialSearchBox"
+                                         Margin="0,8,0,0"
+                                         AutomationProperties.Name="Find saved API keys"
+                                         TextChanged="CredentialSearchBox_TextChanged" />
+                                <TextBlock Margin="0,3,0,0" Foreground="#666" Text="Search by credential name" />
+                                <ListBox x:Name="SavedCredentialList"
+                                         Margin="0,8,0,0"
+                                         Height="90"
+                                         DisplayMemberPath="DisplayText"
+                                         SelectionChanged="SavedCredentialList_SelectionChanged"
+                                         AutomationProperties.Name="Saved VoicePaste API keys" />
+                                <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
+                                    <Button x:Name="RefreshCredentialsButton"
+                                            Click="RefreshCredentials_Click"
+                                            Content="Refresh" />
+                                    <Button x:Name="DeleteSelectedCredentialButton"
+                                            Margin="8,0,0,0"
+                                            Click="DeleteSelectedCredential_Click"
+                                            Content="Delete selected"
+                                            IsEnabled="False" />
+                                </StackPanel>
+                                <TextBlock x:Name="CredentialManagerStatusText"
+                                           Margin="0,4,0,0"
+                                           Foreground="#555"
+                                           TextWrapping="Wrap"
+                                           AutomationProperties.Name="API key manager status" />
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+                </TabItem>
+
+                <TabItem Header="Microphone">
+                    <StackPanel Margin="10">
+                        <TextBlock FontWeight="SemiBold" Text="Detected microphones" />
+                        <ListBox x:Name="MicrophoneList" Margin="0,6,0,0" Height="140" IsTabStop="True" />
+                        <TextBlock x:Name="MicrophoneErrorText" Margin="0,4,0,0" Foreground="#B42318" />
+                    </StackPanel>
+                </TabItem>
+            </TabControl>
+
+            <TextBlock Margin="0,14,0,4" FontWeight="SemiBold" Text="Current state" />
             <TextBlock x:Name="StateText" Text="Idle" AutomationProperties.Name="VoicePaste current state" />
             <TextBlock x:Name="ErrorText"
                        Margin="0,4,0,0"
@@ -121,11 +145,7 @@
                        TextWrapping="Wrap"
                        AutomationProperties.Name="VoicePaste status message" />
 
-            <TextBlock Margin="0,18,0,4" FontWeight="SemiBold" Text="Detected microphones" />
-            <ListBox x:Name="MicrophoneList" Height="110" IsTabStop="True" />
-            <TextBlock x:Name="MicrophoneErrorText" Margin="0,4,0,0" Foreground="#B42318" />
-
-            <StackPanel x:Name="FallbackPanel" Margin="0,18,0,0" Visibility="Collapsed">
+            <StackPanel x:Name="FallbackPanel" Margin="0,14,0,0" Visibility="Collapsed">
                 <TextBlock FontWeight="SemiBold" Text="Transcript available for manual copy" />
                 <TextBox x:Name="FallbackTranscriptText"
                          Margin="0,6,0,4"
@@ -136,7 +156,7 @@
                 <Button HorizontalAlignment="Left" Click="CopyTranscript_Click" Content="Copy transcript" />
             </StackPanel>
 
-            <TextBlock Margin="0,18,0,0" Foreground="#666" TextWrapping="Wrap"
+            <TextBlock Margin="0,14,0,0" Foreground="#666" TextWrapping="Wrap"
                        Text="The configured record button is observed through pass-through Raw Input. VoicePaste does not suppress the key in the foreground application and never steals focus to force a paste." />
         </StackPanel>
     </ScrollViewer>

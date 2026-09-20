@@ -21,6 +21,10 @@ public static class OperationErrorPresenter
                 "The clipboard contains data that cannot be read safely. Use manual copy if direct insertion fails.",
             "paste.unicode_send_input_failed" =>
                 "The target app did not accept direct Unicode insertion. Use manual copy.",
+            "audio.stop_timed_out" =>
+                "The microphone did not finish stopping. VoicePaste reset the recording; try again.",
+            "audio.flush_timed_out" =>
+                "The recording could not be saved in time. VoicePaste reset the recording; try again.",
             "target.voicepaste_window" =>
                 "Switch to an editable field in another application, then hold Right Ctrl to dictate.",
             _ => operationError.Category switch
@@ -36,6 +40,8 @@ public static class OperationErrorPresenter
                 ErrorCategory.ProviderFailure =>
                     "The speech provider could not complete transcription. Try again.",
                 ErrorCategory.NoSpeech => "No usable speech was captured.",
+                ErrorCategory.MicrophoneUnavailable =>
+                    "The microphone is unavailable. Check the device and try again.",
                 ErrorCategory.StorageFull => "Temporary storage is below the 256 MiB safety reserve.",
                 ErrorCategory.TargetUnavailable =>
                     "The original target is no longer foreground. Return to it and try dictating again.",
