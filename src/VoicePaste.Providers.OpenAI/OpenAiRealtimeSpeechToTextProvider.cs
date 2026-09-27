@@ -11,7 +11,8 @@ public sealed record OpenAiRealtimeProviderOptions(
     string Model,
     string CredentialReference,
     TimeSpan ConnectTimeout,
-    TimeSpan ResponseTimeout)
+    TimeSpan ResponseTimeout,
+    TimeSpan? ShutdownTimeout = null)
 {
     public const string DefaultModel = "gpt-live-transcribe";
     public const string DefaultCredentialReference = "openai-api-key";
@@ -172,6 +173,7 @@ public sealed class OpenAiRealtimeSpeechToTextProvider : IStreamingSpeechToTextP
 
 public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
 {
+    private static readonly TimeSpan DefaultShutdownTimeout = TimeSpan.FromSeconds(2);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -180,6 +182,8 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
     private readonly WebSocket _webSocket;
     private readonly OpenAiRealtimeProviderOptions _options;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+    private readonly object _disposeGate = new();
+    private readonly object _transcriptGate = new();
     private readonly StringBuilder _transcriptBuilder = new();
     private readonly TaskCompletionSource<OperationResult<Unit>> _initialization =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -188,6 +192,7 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
     private readonly CancellationTokenSource _sessionCts = new();
     private readonly Stopwatch _stopwatch = new();
     private Task? _receiveTask;
+    private Task? _disposeTask;
     private volatile bool _disposed;
     private bool _committed;
 
@@ -338,7 +343,7 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
         catch (OperationCanceledException) when (
             responseTimeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
-            if (_transcriptBuilder.Length > 0)
+            if (HasTranscript())
             {
                 return CreateSuccessfulOutput();
             }
@@ -349,9 +354,23 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
                 IsRetryable: true,
                 "realtime_response_timeout"));
         }
+        catch (OperationCanceledException) when (
+            _sessionCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            if (HasTranscript())
+            {
+                return CreateSuccessfulOutput();
+            }
+
+            return OperationResult.Failure<TranscriptionOutput>(new OperationError(
+                ErrorCategory.ProviderFailure,
+                "provider.websocket_receive_error",
+                IsRetryable: true,
+                "realtime_session_ended"));
+        }
         catch (Exception exception) when (exception is WebSocketException or IOException)
         {
-            if (_transcriptBuilder.Length > 0)
+            if (HasTranscript())
             {
                 return CreateSuccessfulOutput();
             }
@@ -396,13 +415,17 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (_disposed)
+        lock (_disposeGate)
         {
-            return;
+            _disposeTask ??= DisposeCoreAsync();
+            return new ValueTask(_disposeTask);
         }
+    }
 
+    private async Task DisposeCoreAsync()
+    {
         _disposed = true;
         _sessionCts.Cancel();
         _initialization.TrySetCanceled(CancellationToken.None);
@@ -412,7 +435,19 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
         {
             if (_receiveTask is not null)
             {
-                await _receiveTask.ConfigureAwait(false);
+                try
+                {
+                    await _receiveTask
+                        .WaitAsync(_options.ShutdownTimeout ?? DefaultShutdownTimeout)
+                        .ConfigureAwait(false);
+                }
+                catch (TimeoutException)
+                {
+                    _webSocket.Abort();
+                    await _receiveTask
+                        .WaitAsync(_options.ShutdownTimeout ?? DefaultShutdownTimeout)
+                        .ConfigureAwait(false);
+                }
             }
         }
         catch
@@ -423,7 +458,8 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
         {
             _webSocket.Dispose();
             _sessionCts.Dispose();
-            _sendLock.Dispose();
+            // Do not dispose the semaphore: an uncooperative in-flight WebSocket send may still
+            // execute its finally/release after bounded shutdown has returned.
         }
     }
 
@@ -477,8 +513,7 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
                     {
                         DiagnosticLog.LogMessage(
                             "realtime.websocket_closed",
-                            $"CloseStatus={_webSocket.CloseStatus} " +
-                            $"Description=\"{_webSocket.CloseStatusDescription}\"");
+                            $"CloseStatus={_webSocket.CloseStatus}");
                         SetTransportFailure("realtime_websocket_closed");
                         return;
                     }
@@ -525,7 +560,7 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
             {
                 DiagnosticLog.LogMessage(
                     $"realtime.server_event.{eventType}",
-                    root.GetRawText());
+                    GetSanitizedErrorMetadata(root));
             }
 
             switch (eventType)
@@ -571,8 +606,14 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
             return;
         }
 
-        _transcriptBuilder.Append(delta);
-        InterimTranscriptReceived?.Invoke(this, _transcriptBuilder.ToString());
+        string interimTranscript;
+        lock (_transcriptGate)
+        {
+            _transcriptBuilder.Append(delta);
+            interimTranscript = _transcriptBuilder.ToString();
+        }
+
+        InterimTranscriptReceived?.Invoke(this, interimTranscript);
     }
 
     private void CompleteTranscript(JsonElement root)
@@ -581,13 +622,18 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
         var completedText = root.TryGetProperty("transcript", out var transcriptElement)
             ? transcriptElement.GetString()?.Trim()
             : null;
-        if (!string.IsNullOrWhiteSpace(completedText))
+        string finalText;
+        lock (_transcriptGate)
         {
-            _transcriptBuilder.Clear();
-            _transcriptBuilder.Append(completedText);
+            if (!string.IsNullOrWhiteSpace(completedText))
+            {
+                _transcriptBuilder.Clear();
+                _transcriptBuilder.Append(completedText);
+            }
+
+            finalText = _transcriptBuilder.ToString();
         }
 
-        var finalText = _transcriptBuilder.ToString();
         InterimTranscriptReceived?.Invoke(this, finalText);
         _completion.TrySetResult(OperationResult.Success(new TranscriptionOutput(
             finalText,
@@ -627,10 +673,31 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
     private OperationResult<TranscriptionOutput> CreateSuccessfulOutput()
     {
         _stopwatch.Stop();
+        string transcript;
+        lock (_transcriptGate)
+        {
+            transcript = _transcriptBuilder.ToString();
+        }
+
         return OperationResult.Success(new TranscriptionOutput(
-            _transcriptBuilder.ToString(),
+            transcript,
             DetectedLanguage: null,
             _stopwatch.Elapsed));
+    }
+
+    private bool HasTranscript()
+    {
+        lock (_transcriptGate)
+        {
+            return _transcriptBuilder.Length > 0;
+        }
+    }
+
+    internal static string GetSanitizedErrorMetadata(JsonElement root)
+    {
+        var type = GetErrorProperty(root, "type") ?? "unknown";
+        var code = GetErrorProperty(root, "code") ?? "unknown";
+        return $"Type={SanitizeDiagnosticToken(type)} Code={SanitizeDiagnosticToken(code)}";
     }
 
     private static string[]? GetLanguageHints(TranscriptionOptions options)

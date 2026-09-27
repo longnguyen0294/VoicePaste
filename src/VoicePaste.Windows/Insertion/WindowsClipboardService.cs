@@ -59,7 +59,12 @@ public sealed partial class WindowsClipboardService : IDisposable
                     cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (ClipboardAccessException)
+        catch (Exception exception) when (
+            exception is ClipboardAccessException or
+            COMException or
+            ExternalException or
+            InvalidOperationException or
+            ObjectDisposedException)
         {
             return false;
         }

@@ -144,10 +144,14 @@ Idle --press/acquire--> Listening --release--> Transcribing --valid text--> Past
 Invariants:
 
 - Exactly one session lease may exist.
+- Exactly one completion, cancellation, interruption, or streaming-failure path owns terminal cleanup;
+  competing terminal requests signal cancellation and await that owner's bounded cleanup result.
 - State transitions are serialized by the coordinator, not by individual UI controls.
 - Rapid or repeated press/release events are debounced and cannot create a second capture or provider
   request.
 - Every terminal path executes cleanup in a `finally`-equivalent boundary and returns to `Idle`.
+- Terminal cleanup isolates audio reset, realtime drain/cancel/dispose, temporary-content disposal, and
+  state finalization so one failed cleanup step cannot skip the remaining steps or strand the session.
 - Pause prevents new sessions but does not abandon cleanup for an active session.
 - Exit cancels active work, releases Raw Input registration and audio devices, and completes bounded cleanup.
 - Windows lock, sleep, session change, raw-input device removal, or any event that makes the held-key
@@ -160,6 +164,9 @@ Invariants:
 - Audio callbacks must not perform blocking disk, network, or UI operations.
 - Provider calls, file cleanup, and clipboard retry delays are asynchronous and cancellable where the
   underlying platform allows it.
+- Realtime audio uses a bounded ordered queue. A send failure or exhausted queue is a typed provider
+  failure that cancels capture and runs terminal cleanup; it cannot create an unbounded task backlog.
+- WebSocket receive shutdown is bounded and aborts the socket if a receiver ignores cancellation.
 - Session cancellation is linked to cancel-hotkey, application exit, unrecoverable resource errors,
   and Windows session events; elapsed recording duration is not a cancellation source.
 - Long captures use a bounded channel, sequential chunks of at most five minutes, and a single writer.

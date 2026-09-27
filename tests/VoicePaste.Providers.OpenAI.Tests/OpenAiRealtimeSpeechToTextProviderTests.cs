@@ -167,6 +167,19 @@ public sealed class OpenAiRealtimeSpeechToTextProviderTests
         Assert.AreEqual("provider.quota_or_rate_limit", failure.Error.UserMessageKey);
         Assert.AreEqual("openai_rate_limit_exceeded", failure.Error.DiagnosticCode);
         Assert.IsFalse(failure.Error.DiagnosticCode!.Contains(sensitiveMessage, StringComparison.Ordinal));
+
+        using var serverEvent = JsonDocument.Parse(
+            "{\"type\":\"conversation.item.input_audio_transcription.failed\",\"error\":{" +
+            "\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\",\"message\":\"" +
+            sensitiveMessage + "\"}}");
+        var safeMetadata = OpenAiRealtimeSession.GetSanitizedErrorMetadata(serverEvent.RootElement);
+        Assert.IsFalse(safeMetadata.Contains(sensitiveMessage, StringComparison.Ordinal));
+        StringAssert.Contains(safeMetadata, "rate_limit_exceeded");
+
+        var exceptionMetadata = DiagnosticLog.FormatExceptionMetadata(
+            new InvalidOperationException(sensitiveMessage));
+        Assert.IsFalse(exceptionMetadata.Contains(sensitiveMessage, StringComparison.Ordinal));
+        StringAssert.Contains(exceptionMetadata, nameof(InvalidOperationException));
     }
 
     [TestMethod]
@@ -192,6 +205,25 @@ public sealed class OpenAiRealtimeSpeechToTextProviderTests
         Assert.AreEqual("provider.request_rejected", failure.Error.UserMessageKey);
         Assert.IsFalse(failure.Error.IsRetryable);
         Assert.AreEqual("openai_invalid_value", failure.Error.DiagnosticCode);
+    }
+
+    [TestMethod]
+    public async Task UtRealtime008ConcurrentDisposeAbortsUncooperativeReceiverAndCompletes()
+    {
+        using var webSocket = new UncooperativeReceiveWebSocket();
+        var options = CreateOptions() with { ShutdownTimeout = TimeSpan.FromMilliseconds(50) };
+        var session = new OpenAiRealtimeSession(webSocket, options);
+        var initialization = await session.InitializeAsync(
+            new TranscriptionOptions(LanguageMode.English, ["en"], true),
+            CancellationToken.None);
+        Assert.IsTrue(initialization.IsSuccess);
+
+        var firstDispose = session.DisposeAsync().AsTask();
+        var secondDispose = session.DisposeAsync().AsTask();
+        await Task.WhenAll(firstDispose, secondDispose).WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.AreEqual(1, webSocket.AbortCount);
+        Assert.AreSame(firstDispose, secondDispose);
     }
 
     private static OpenAiRealtimeProviderOptions CreateOptions() => new(
@@ -315,6 +347,82 @@ public sealed class OpenAiRealtimeSpeechToTextProviderTests
                 _incoming.Writer.TryWrite(response);
             }
 
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class UncooperativeReceiveWebSocket : WebSocket
+    {
+        private readonly TaskCompletionSource _sessionUpdated = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<WebSocketReceiveResult> _hungReceive = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private WebSocketState _state = WebSocketState.Open;
+        private int _receiveCount;
+
+        public int AbortCount { get; private set; }
+
+        public override WebSocketCloseStatus? CloseStatus => null;
+
+        public override string? CloseStatusDescription => null;
+
+        public override WebSocketState State => _state;
+
+        public override string? SubProtocol => null;
+
+        public override void Abort()
+        {
+            AbortCount++;
+            _state = WebSocketState.Aborted;
+            _hungReceive.TrySetException(new WebSocketException("aborted"));
+        }
+
+        public override Task CloseAsync(
+            WebSocketCloseStatus closeStatus,
+            string? statusDescription,
+            CancellationToken cancellationToken)
+        {
+            _state = WebSocketState.Closed;
+            return Task.CompletedTask;
+        }
+
+        public override Task CloseOutputAsync(
+            WebSocketCloseStatus closeStatus,
+            string? statusDescription,
+            CancellationToken cancellationToken)
+        {
+            _state = WebSocketState.CloseSent;
+            return Task.CompletedTask;
+        }
+
+        public override void Dispose()
+        {
+            _state = WebSocketState.Closed;
+            _hungReceive.TrySetException(new ObjectDisposedException(nameof(UncooperativeReceiveWebSocket)));
+        }
+
+        public override async Task<WebSocketReceiveResult> ReceiveAsync(
+            ArraySegment<byte> buffer,
+            CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref _receiveCount) == 1)
+            {
+                await _sessionUpdated.Task;
+                var bytes = Encoding.UTF8.GetBytes("{\"type\":\"session.updated\"}");
+                bytes.CopyTo(buffer.AsSpan());
+                return new WebSocketReceiveResult(bytes.Length, WebSocketMessageType.Text, true);
+            }
+
+            return await _hungReceive.Task;
+        }
+
+        public override Task SendAsync(
+            ArraySegment<byte> buffer,
+            WebSocketMessageType messageType,
+            bool endOfMessage,
+            CancellationToken cancellationToken)
+        {
+            _sessionUpdated.TrySetResult();
             return Task.CompletedTask;
         }
     }

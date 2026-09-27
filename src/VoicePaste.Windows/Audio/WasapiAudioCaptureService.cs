@@ -277,9 +277,15 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
             return;
         }
 
-        await CancelAsync(CancellationToken.None).ConfigureAwait(false);
-        _disposed = true;
-        _gate.Dispose();
+        try
+        {
+            await CancelAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            _disposed = true;
+            _gate.Dispose();
+        }
     }
 
     private void OnDataAvailable(
@@ -292,7 +298,14 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
         if (DataAvailable is not null && !buffer.IsEmpty)
         {
             var chunk = buffer.ToArray();
-            DataAvailable.Invoke(this, new AudioChunkAvailableEventArgs(chunk));
+            try
+            {
+                DataAvailable.Invoke(this, new AudioChunkAvailableEventArgs(chunk));
+            }
+            catch
+            {
+                // A consumer failure must not escape onto the WASAPI callback thread.
+            }
         }
     }
 
@@ -339,20 +352,30 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
 
     private async Task DeleteCurrentRecordingAsync()
     {
-        if (_sink is not null)
+        var recordingDirectory = _recordingDirectory;
+        try
         {
-            _sink.Faulted -= OnSinkFaulted;
-            await _sink.DisposeAsync().ConfigureAwait(false);
+            if (_sink is not null)
+            {
+                _sink.Faulted -= OnSinkFaulted;
+                await _sink.DisposeAsync().ConfigureAwait(false);
+            }
         }
-
-        CleanupCaptureObjects(disposeSink: false);
-        if (_recordingDirectory is not null && Directory.Exists(_recordingDirectory))
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or ObjectDisposedException)
         {
-            TryDeleteDirectory(_recordingDirectory);
         }
+        finally
+        {
+            CleanupCaptureObjects(disposeSink: false);
+            if (recordingDirectory is not null && Directory.Exists(recordingDirectory))
+            {
+                TryDeleteDirectory(recordingDirectory);
+            }
 
-        _recordingDirectory = null;
-        _recordingId = null;
+            _recordingDirectory = null;
+            _recordingId = null;
+        }
     }
 
     private void CleanupCaptureObjects(bool disposeSink = true)
@@ -361,16 +384,38 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
         {
             _capture.DataAvailable -= OnDataAvailable;
             _capture.RecordingStopped -= OnRecordingStopped;
-            _capture.Dispose();
+            try
+            {
+                _capture.Dispose();
+            }
+            catch (Exception exception) when (
+                exception is COMException or InvalidOperationException or ObjectDisposedException)
+            {
+            }
+
             _capture = null;
         }
 
-        _device?.Dispose();
+        try
+        {
+            _device?.Dispose();
+        }
+        catch (Exception exception) when (exception is COMException or InvalidOperationException)
+        {
+        }
+
         _device = null;
         if (disposeSink && _sink is not null)
         {
             _sink.Faulted -= OnSinkFaulted;
-            _sink.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            try
+            {
+                _sink.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or ObjectDisposedException)
+            {
+            }
         }
 
         _sink = null;

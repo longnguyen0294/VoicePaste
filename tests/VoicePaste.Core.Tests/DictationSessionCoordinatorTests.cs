@@ -147,7 +147,7 @@ public sealed class DictationSessionCoordinatorTests
         Assert.IsTrue(await coordinator.StartListeningAsync());
 
         fixture.Audio.EmitData(new byte[160]);
-        Assert.IsTrue(fakeStreamingSession.AudioSendStarted);
+        await fakeStreamingSession.AudioSendBegan.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         var completion = coordinator.CompleteAsync();
         Assert.IsFalse(fakeStreamingSession.CompleteWasCalled);
@@ -182,6 +182,136 @@ public sealed class DictationSessionCoordinatorTests
         Assert.IsTrue(await coordinator.StartListeningAsync());
         await coordinator.CancelAsync();
         Assert.AreEqual(DictationSessionState.Idle, coordinator.State);
+    }
+
+    [TestMethod]
+    public async Task UtState007ProviderFailureReturnsToIdleAndAllowsAnotherSession()
+    {
+        var fixture = new CoordinatorFixture
+        {
+            ProviderResult = OperationResult.Failure<TranscriptionOutput>(new OperationError(
+                ErrorCategory.ProviderFailure,
+                "provider.transcription_failed",
+                IsRetryable: true)),
+        };
+        await using var coordinator = fixture.CreateCoordinator();
+
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+        await coordinator.CompleteAsync();
+
+        Assert.AreEqual(DictationSessionState.Idle, coordinator.State);
+        Assert.IsTrue(fixture.Status.States.Any(entry =>
+            entry.State == DictationSessionState.Error &&
+            entry.Error?.Category == ErrorCategory.ProviderFailure));
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+        await coordinator.CancelAsync();
+        Assert.AreEqual(2, fixture.Audio.StartCount);
+    }
+
+    [TestMethod]
+    public async Task UtState008CancelledAudioStopStillResetsCaptureForNextSession()
+    {
+        var fixture = new CoordinatorFixture();
+        fixture.Audio.StopException = new OperationCanceledException("simulated stop cancellation");
+        await using var coordinator = fixture.CreateCoordinator();
+
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+        await coordinator.CompleteAsync();
+
+        Assert.AreEqual(DictationSessionState.Idle, coordinator.State);
+        Assert.AreEqual(1, fixture.Audio.CancelCount);
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+        await coordinator.CancelAsync();
+    }
+
+    [TestMethod]
+    public async Task UtState009ConcurrentCancellationHasSingleCleanupOwner()
+    {
+        var streamingSession = new FakeStreamingSession("unused");
+        var fixture = new CoordinatorFixture
+        {
+            StreamingProvider = new FakeStreamingProvider(streamingSession),
+            Settings = AppSettings.Default with { DictationMode = DictationMode.Realtime },
+        };
+        await using var coordinator = fixture.CreateCoordinator();
+
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+        await Task.WhenAll(coordinator.CancelAsync(), coordinator.CancelAsync());
+
+        Assert.AreEqual(DictationSessionState.Idle, coordinator.State);
+        Assert.AreEqual(1, fixture.Audio.CancelCount);
+        Assert.AreEqual(1, streamingSession.CancelCount);
+        Assert.AreEqual(1, streamingSession.DisposeCount);
+    }
+
+    [TestMethod]
+    public async Task UtState010RealtimeSendFailureStopsCaptureAndAllowsAnotherSession()
+    {
+        var streamingSession = new FakeStreamingSession("unused", failAudioSend: true);
+        var fixture = new CoordinatorFixture
+        {
+            StreamingProvider = new FakeStreamingProvider(streamingSession),
+            Settings = AppSettings.Default with { DictationMode = DictationMode.Realtime },
+        };
+        await using var coordinator = fixture.CreateCoordinator();
+
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+        fixture.Audio.EmitData(new byte[160]);
+        await fixture.Status.IdleAfterError.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.AreEqual(DictationSessionState.Idle, coordinator.State);
+        Assert.AreEqual(1, fixture.Audio.CancelCount);
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+        await coordinator.CancelAsync();
+        Assert.AreEqual(2, fixture.Audio.StartCount);
+    }
+
+    [TestMethod]
+    public async Task UtState011CleanupExceptionsCannotStrandSession()
+    {
+        var streamingSession = new FakeStreamingSession(
+            "unused",
+            failCancellation: true,
+            failDisposal: true);
+        var fixture = new CoordinatorFixture
+        {
+            StreamingProvider = new FakeStreamingProvider(streamingSession),
+            Settings = AppSettings.Default with { DictationMode = DictationMode.Realtime },
+        };
+        await using var coordinator = fixture.CreateCoordinator();
+
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+        await coordinator.CancelAsync();
+
+        Assert.AreEqual(DictationSessionState.Idle, coordinator.State);
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+    }
+
+    [TestMethod]
+    public async Task UtState012RealtimeBackpressureFailsBoundedlyAndRecovers()
+    {
+        var streamingSession = new FakeStreamingSession("unused", blockAudioSend: true);
+        var fixture = new CoordinatorFixture
+        {
+            StreamingProvider = new FakeStreamingProvider(streamingSession),
+            Settings = AppSettings.Default with { DictationMode = DictationMode.Realtime },
+        };
+        await using var coordinator = fixture.CreateCoordinator();
+
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+        fixture.Audio.EmitData(new byte[160]);
+        await streamingSession.AudioSendBegan.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        for (var index = 0; index < 140; index++)
+        {
+            fixture.Audio.EmitData(new byte[160]);
+        }
+
+        await fixture.Status.IdleAfterError.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.AreEqual(DictationSessionState.Idle, coordinator.State);
+        Assert.IsTrue(fixture.Status.States.Any(entry =>
+            entry.Error?.UserMessageKey == "provider.audio_stream_backpressure"));
+        Assert.IsTrue(await coordinator.StartListeningAsync());
     }
 
     private sealed class CoordinatorFixture
@@ -225,6 +355,8 @@ public sealed class DictationSessionCoordinatorTests
 
     private sealed class FakeAudioCapture : IAudioCaptureService
     {
+        private bool _active;
+
         public event EventHandler<AudioChunkAvailableEventArgs>? DataAvailable;
 
         public void EmitData(byte[] bytes) =>
@@ -236,24 +368,46 @@ public sealed class DictationSessionCoordinatorTests
 
         public int CancelCount { get; private set; }
 
+        public Exception? StopException { get; set; }
+
         public Task<OperationResult<Unit>> StartAsync(
             string microphoneId,
             CancellationToken cancellationToken)
         {
+            if (_active)
+            {
+                return Task.FromResult(OperationResult.Failure<Unit>(new OperationError(
+                    ErrorCategory.MicrophoneUnavailable,
+                    "audio.already_recording",
+                    IsRetryable: false)));
+            }
+
+            _active = true;
             StartCount++;
             return Task.FromResult(OperationResult.Success(Unit.Value));
         }
 
-        public Task<OperationResult<AudioRecording>> StopAsync(CancellationToken cancellationToken) =>
-            Task.FromResult(OperationResult.Success(new AudioRecording(
+        public Task<OperationResult<AudioRecording>> StopAsync(CancellationToken cancellationToken)
+        {
+            if (StopException is not null)
+            {
+                var exception = StopException;
+                StopException = null;
+                return Task.FromException<OperationResult<AudioRecording>>(exception);
+            }
+
+            _active = false;
+            return Task.FromResult(OperationResult.Success(new AudioRecording(
                 "test-recording",
                 Content,
                 DateTimeOffset.UtcNow,
                 null)));
+        }
 
         public Task CancelAsync(CancellationToken cancellationToken)
         {
             CancelCount++;
+            _active = false;
             return Task.CompletedTask;
         }
 
@@ -303,10 +457,21 @@ public sealed class DictationSessionCoordinatorTests
     {
         private readonly string _finalText;
         private readonly TaskCompletionSource? _audioSendRelease;
+        private readonly bool _failAudioSend;
+        private readonly bool _failCancellation;
+        private readonly bool _failDisposal;
 
-        public FakeStreamingSession(string finalText, bool blockAudioSend = false)
+        public FakeStreamingSession(
+            string finalText,
+            bool blockAudioSend = false,
+            bool failAudioSend = false,
+            bool failCancellation = false,
+            bool failDisposal = false)
         {
             _finalText = finalText;
+            _failAudioSend = failAudioSend;
+            _failCancellation = failCancellation;
+            _failDisposal = failDisposal;
             if (blockAudioSend)
             {
                 _audioSendRelease = new TaskCompletionSource(
@@ -320,7 +485,14 @@ public sealed class DictationSessionCoordinatorTests
 
         public bool AudioSendStarted { get; private set; }
 
+        public TaskCompletionSource AudioSendBegan { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
         public bool CompleteWasCalled { get; private set; }
+
+        public int CancelCount { get; private set; }
+
+        public int DisposeCount { get; private set; }
 
         public void EmitInterim(string text) => InterimTranscriptReceived?.Invoke(this, text);
 
@@ -330,6 +502,12 @@ public sealed class DictationSessionCoordinatorTests
         {
             ChunkCount++;
             AudioSendStarted = true;
+            AudioSendBegan.TrySetResult();
+            if (_failAudioSend)
+            {
+                throw new IOException("simulated realtime send failure");
+            }
+
             if (_audioSendRelease is not null)
             {
                 await _audioSendRelease.Task.WaitAsync(cancellationToken);
@@ -345,9 +523,21 @@ public sealed class DictationSessionCoordinatorTests
 
         public void ReleaseAudioSend() => _audioSendRelease?.TrySetResult();
 
-        public Task CancelAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task CancelAsync(CancellationToken cancellationToken)
+        {
+            CancelCount++;
+            return _failCancellation
+                ? Task.FromException(new IOException("simulated cancellation failure"))
+                : Task.CompletedTask;
+        }
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            DisposeCount++;
+            return _failDisposal
+                ? ValueTask.FromException(new IOException("simulated disposal failure"))
+                : ValueTask.CompletedTask;
+        }
     }
 
     private sealed class FakeStreamingProvider(IStreamingSpeechToTextSession session) : IStreamingSpeechToTextProvider
@@ -388,9 +578,14 @@ public sealed class DictationSessionCoordinatorTests
 
     private sealed class FakeStatusSink : IStatusSink
     {
+        private bool _errorObserved;
+
         public List<(DictationSessionState State, OperationError? Error)> States { get; } = [];
 
         public List<string> InterimTranscripts { get; } = [];
+
+        public TaskCompletionSource IdleAfterError { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
 
         public ValueTask PublishAsync(
             DictationSessionState state,
@@ -398,6 +593,12 @@ public sealed class DictationSessionCoordinatorTests
             CancellationToken cancellationToken)
         {
             States.Add((state, error));
+            _errorObserved |= state == DictationSessionState.Error;
+            if (_errorObserved && state == DictationSessionState.Idle)
+            {
+                IdleAfterError.TrySetResult();
+            }
+
             return ValueTask.CompletedTask;
         }
 
