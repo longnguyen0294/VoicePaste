@@ -32,6 +32,10 @@ internal sealed class AppStatusController : IStatusSink, ITranscriptFallbackStor
         OperationError? operationError,
         CancellationToken cancellationToken)
     {
+        if (operationError is not null)
+        {
+            SessionDiagnostics.Write("status.error", $"State={state}", operationError);
+        }
         cancellationToken.ThrowIfCancellationRequested();
         _dispatcher.BeginInvoke(() =>
         {

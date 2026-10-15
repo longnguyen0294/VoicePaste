@@ -8,6 +8,21 @@ namespace VoicePaste.App.Tests;
 public sealed class OperationErrorPresenterTests
 {
     [TestMethod]
+    [DataRow("session.start_failed")]
+    [DataRow("session.unexpected_error")]
+    [DataRow("app.unexpected_error")]
+    [DataRow("session.cleanup_failed")]
+    public void UtStatus003RepeatedFailureExplainsRestartAndDiagnostics(string messageKey)
+    {
+        var message = OperationErrorPresenter.ToUserMessage(new OperationError(
+            ErrorCategory.SessionInterrupted, messageKey, IsRetryable: true));
+        StringAssert.Contains(message, "tray");
+        StringAssert.Contains(message, "reopen VoicePaste");
+        StringAssert.Contains(message, "local logs");
+        Assert.IsFalse(message.Contains(messageKey, StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void UtStatus001VoicePasteTargetShowsRecoveryActionWithoutInternalCode()
     {
         var error = new OperationError(

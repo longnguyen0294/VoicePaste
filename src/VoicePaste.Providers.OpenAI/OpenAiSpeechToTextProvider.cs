@@ -99,6 +99,7 @@ public sealed class OpenAiSpeechToTextProvider : ISpeechToTextProvider, IDisposa
         }
         catch (Exception exception)
         {
+            DiagnosticLog.LogException("standard.credential_read_failed", exception);
             return OperationResult.Failure<TranscriptionOutput>(new OperationError(
                 ErrorCategory.AuthenticationFailed,
                 "provider.credential_unavailable",
@@ -246,6 +247,7 @@ public sealed class OpenAiSpeechToTextProvider : ISpeechToTextProvider, IDisposa
             using var response = await _httpClient
                 .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token)
                 .ConfigureAwait(false);
+            DiagnosticLog.LogMessage("standard.http_response", $"Segment={segmentIndex} Status={(int)response.StatusCode}");
             if (!response.IsSuccessStatusCode)
             {
                 var providerCode = await ReadProviderErrorCodeAsync(response, timeout.Token)
@@ -274,6 +276,7 @@ public sealed class OpenAiSpeechToTextProvider : ISpeechToTextProvider, IDisposa
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            DiagnosticLog.LogMessage("standard.request_timeout", $"Segment={segmentIndex}");
             return OperationResult.Failure<ProviderSegmentResult>(new OperationError(
                 ErrorCategory.TimedOut,
                 "provider.timed_out",
@@ -282,12 +285,12 @@ public sealed class OpenAiSpeechToTextProvider : ISpeechToTextProvider, IDisposa
         }
         catch (HttpRequestException exception)
         {
+            DiagnosticLog.LogException("standard.request_failed", exception);
             if (exception.StatusCode is HttpStatusCode statusCode)
             {
                 return OperationResult.Failure<ProviderSegmentResult>(MapHttpError(statusCode, null));
             }
 
-            DiagnosticLog.LogException("standard.request_failed", exception);
             return OperationResult.Failure<ProviderSegmentResult>(new OperationError(
                 ErrorCategory.NetworkUnavailable,
                 "provider.network_unavailable",
@@ -296,6 +299,7 @@ public sealed class OpenAiSpeechToTextProvider : ISpeechToTextProvider, IDisposa
         }
         catch (IOException exception)
         {
+            DiagnosticLog.LogException("standard.audio_read_failed", exception);
             return OperationResult.Failure<ProviderSegmentResult>(new OperationError(
                 ErrorCategory.AudioEncodingFailed,
                 "audio.read_failed",
@@ -304,6 +308,7 @@ public sealed class OpenAiSpeechToTextProvider : ISpeechToTextProvider, IDisposa
         }
         catch (JsonException exception)
         {
+            DiagnosticLog.LogException("standard.response_parse_failed", exception);
             return OperationResult.Failure<ProviderSegmentResult>(new OperationError(
                 ErrorCategory.ProviderFailure,
                 "provider.invalid_response",

@@ -38,6 +38,7 @@ public sealed class WasapiMicrophoneCatalog : IMicrophoneCatalog
         }
         catch (Exception exception) when (exception is COMException or InvalidOperationException)
         {
+            SessionDiagnostics.Write("audio.default_device_failed", exception: exception);
             return null;
         }
     }
@@ -59,6 +60,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
     private OperationError? _captureFailure;
     private TaskCompletionSource<OperationError?>? _recordingStopped;
     private bool _disposed;
+    private Guid? _diagnosticSessionId;
 
     public event EventHandler<AudioChunkAvailableEventArgs>? DataAvailable;
 
@@ -87,6 +89,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
                     IsRetryable: false));
             }
 
+            _diagnosticSessionId = SessionDiagnostics.CurrentSessionId;
             try
             {
                 using var enumerator = new MMDeviceEnumerator();
@@ -120,10 +123,12 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
                 _recordingStopped = new TaskCompletionSource<OperationError?>(
                     TaskCreationOptions.RunContinuationsAsynchronously);
                 _capture.StartRecording();
+                SessionDiagnostics.Write("audio.capture_ready", $"SampleRate={waveFormat.SampleRate} Channels={waveFormat.Channels} BitsPerSample={waveFormat.BitsPerSample}");
                 return OperationResult.Success(Unit.Value);
             }
             catch (UnauthorizedAccessException exception)
             {
+                SessionDiagnostics.Write("audio.start_permission_failed", exception: exception);
                 CleanupFailedStart();
                 return OperationResult.Failure<Unit>(new OperationError(
                     ErrorCategory.MicrophonePermissionDenied,
@@ -133,6 +138,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
             }
             catch (Exception exception) when (exception is COMException or InvalidOperationException or IOException or NotSupportedException)
             {
+                SessionDiagnostics.Write("audio.start_failed", exception: exception);
                 CleanupFailedStart();
                 return OperationResult.Failure<Unit>(new OperationError(
                     ErrorCategory.MicrophoneUnavailable,
@@ -254,6 +260,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
                         }
                         catch (TimeoutException)
                         {
+                            SessionDiagnostics.Write("audio.cancel_stop_timeout");
                             // A faulty audio driver must not keep cancellation or app shutdown stuck.
                         }
                     }
@@ -311,9 +318,11 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
 
     private void OnRecordingStopped(object? sender, StoppedEventArgs args)
     {
+        using var diagnostics = SessionDiagnostics.BeginSession(_diagnosticSessionId);
         OperationError? failure = null;
         if (args.Exception is not null)
         {
+            SessionDiagnostics.Write("audio.recording_stopped_exception", exception: args.Exception);
             failure = new OperationError(
                 ErrorCategory.MicrophoneUnavailable,
                 "audio.capture_stopped",
@@ -341,6 +350,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
             }
             catch (Exception exception)
             {
+                SessionDiagnostics.Write("audio.stop_after_storage_fault_failed", exception: exception);
                 _captureFailure ??= new OperationError(
                     ErrorCategory.MicrophoneUnavailable,
                     "audio.capture_stopped",
@@ -364,6 +374,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or ObjectDisposedException)
         {
+            SessionDiagnostics.Write("audio.sink_dispose_failed", exception: exception);
         }
         finally
         {
@@ -391,6 +402,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
             catch (Exception exception) when (
                 exception is COMException or InvalidOperationException or ObjectDisposedException)
             {
+                SessionDiagnostics.Write("audio.recorder_dispose_failed", exception: exception);
             }
 
             _capture = null;
@@ -402,6 +414,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
         }
         catch (Exception exception) when (exception is COMException or InvalidOperationException)
         {
+            SessionDiagnostics.Write("audio.device_dispose_failed", exception: exception);
         }
 
         _device = null;
@@ -415,6 +428,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
             catch (Exception exception) when (
                 exception is IOException or UnauthorizedAccessException or ObjectDisposedException)
             {
+                SessionDiagnostics.Write("audio.failed_start_sink_dispose_failed", exception: exception);
             }
         }
 
@@ -422,6 +436,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
         _format = null;
         _captureFailure = null;
         _recordingStopped = null;
+        SessionDiagnostics.Write("audio.capture_reset", "Capture=False Sink=False Device=False");
     }
 
     private void CleanupFailedStart()
@@ -450,6 +465,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
         }
         catch (Exception exception) when (exception is COMException or InvalidOperationException or ObjectDisposedException)
         {
+            SessionDiagnostics.Write("audio.stop_request_failed", exception: exception);
             var failure = new OperationError(
                 ErrorCategory.MicrophoneUnavailable,
                 "audio.capture_stopped",
@@ -468,6 +484,7 @@ public sealed class WasapiAudioCaptureService : IAudioCaptureService
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
+            SessionDiagnostics.Write("audio.delete_failed", exception: exception);
             // Startup cleanup retries application-owned stale audio without destabilizing shutdown.
         }
     }
@@ -500,6 +517,7 @@ public sealed class TemporaryAudioCleanupService
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
+            SessionDiagnostics.Write("audio.startup_list_failed", exception: exception);
             return Task.CompletedTask;
         }
 
@@ -521,6 +539,7 @@ public sealed class TemporaryAudioCleanupService
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
+                SessionDiagnostics.Write("audio.startup_delete_failed", exception: exception);
                 // Best effort: a later startup can retry a temporarily locked directory.
             }
         }

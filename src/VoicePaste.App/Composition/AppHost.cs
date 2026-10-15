@@ -54,6 +54,7 @@ internal sealed class AppHost : IAsyncDisposable
         Dispatcher dispatcher,
         CancellationToken cancellationToken)
     {
+        SessionDiagnostics.Write("app.start", $"AppVersion={typeof(AppHost).Assembly.GetName().Version} CoreModule={typeof(DictationSessionCoordinator).Module.ModuleVersionId} OS={Environment.OSVersion.Version} Runtime={System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}");
         var settingsStore = new JsonSettingsStore();
         var settings = await settingsStore.LoadAsync(cancellationToken).ConfigureAwait(true);
         var cleanup = new TemporaryAudioCleanupService();
@@ -172,6 +173,15 @@ internal sealed class AppHost : IAsyncDisposable
             _realtimeProvider.Dispose();
             _insertionService.Dispose();
             _disposed = true;
+            SessionDiagnostics.Write("app.stop");
+            using var logTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            try
+            {
+                await SessionDiagnostics.FlushAsync(logTimeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
     }
 
@@ -225,7 +235,7 @@ internal sealed class AppHost : IAsyncDisposable
         if (_paused)
         {
             _hotkeyService.Unregister();
-            _ = ExecuteSafelyAsync(() => _coordinator.CancelAsync());
+            _ = ExecuteSafelyAsync("hotkey.cancel", () => _coordinator.CancelAsync());
         }
         else
         {
@@ -239,7 +249,7 @@ internal sealed class AppHost : IAsyncDisposable
     {
         if (!_paused)
         {
-            await ExecuteSafelyAsync(() => _coordinator.StartListeningAsync());
+            await ExecuteSafelyAsync("hotkey.pressed", () => _coordinator.StartListeningAsync());
         }
     }
 
@@ -247,19 +257,20 @@ internal sealed class AppHost : IAsyncDisposable
     {
         if (!_paused)
         {
-            await ExecuteSafelyAsync(() => _coordinator.CompleteAsync());
+            await ExecuteSafelyAsync("hotkey.released", () => _coordinator.CompleteAsync());
         }
     }
 
     private async void OnHotkeyInterrupted(object? sender, EventArgs args)
     {
-        await ExecuteSafelyAsync(() => _coordinator.CancelAsync());
+        await ExecuteSafelyAsync("hotkey.cancel", () => _coordinator.CancelAsync());
     }
 
-    private async Task ExecuteSafelyAsync(Func<Task> action)
+    private async Task ExecuteSafelyAsync(string context, Func<Task> action)
     {
         try
         {
+            SessionDiagnostics.Write(context, $"State={_coordinator.State}");
             await action().ConfigureAwait(true);
         }
         catch (OperationCanceledException)
@@ -267,14 +278,16 @@ internal sealed class AppHost : IAsyncDisposable
         }
         catch (Exception exception)
         {
+            SessionDiagnostics.Write("app.action_exception", $"Action={context} State={_coordinator.State}", exception: exception);
             await _status.ReportUnexpectedAsync(exception).ConfigureAwait(true);
         }
     }
 
-    private async Task ExecuteSafelyAsync(Func<Task<bool>> action)
+    private async Task ExecuteSafelyAsync(string context, Func<Task<bool>> action)
     {
         try
         {
+            SessionDiagnostics.Write(context, $"State={_coordinator.State}");
             await action().ConfigureAwait(true);
         }
         catch (OperationCanceledException)
@@ -282,6 +295,7 @@ internal sealed class AppHost : IAsyncDisposable
         }
         catch (Exception exception)
         {
+            SessionDiagnostics.Write("app.action_exception", $"Action={context} State={_coordinator.State}", exception: exception);
             await _status.ReportUnexpectedAsync(exception).ConfigureAwait(true);
         }
     }

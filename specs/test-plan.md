@@ -157,3 +157,31 @@ Use the repository-local pinned SDK and solution:
 
 Focused tests run before the full suite. Manual and live-provider checks remain separately gated and
 must not be reported as passed based on mocks.
+
+## 8. Repeated-failure diagnostics (2026-10-02)
+
+Add Core regressions `UtState013`?`UtState015` for a stopped recording followed by realtime failure,
+three unexpected stop failures followed by recovery, and startup exceptions before session ownership.
+`SessionDiagnosticsTests` cover message/path/secret exclusion, nested async session correlation,
+and bounded log rotation. App `UtStatus003` covers tray restart and local-log guidance.
+The full deterministic suite passed: 73 tests. Release build and self-contained publish passed.
+The reported after-release failure, real clipboard/STA interruption, and reopening recovery remain
+manual checks; review `application.log` and `application.previous.log` as described in
+[dictation-diagnostics.md](dictation-diagnostics.md).
+
+## 9. Clipboard deserialization regression evidence (2026-10-06)
+
+`WindowsClipboardServiceTests` adds eight passing cases: `UtClip004UnsupportedDeserializationRejectsTheWholeSnapshot`
+(platform/not-supported/serialization failures after a readable format),
+`UtClip004FormatEnumerationFailureReturnsTypedClipboardError` (platform/invalid-operation failures),
+`UtClip004SafeAndEmptySnapshotsStillSucceed`, `UtClip004RepeatedReadFailuresDoNotWriteOrPoisonTheDispatcher`
+(three failures on one real STA dispatcher), and `UtInsert003UnreadableClipboardRevalidatesTargetAndRetainsTranscript`
+(actual insertion adapter reaches Unicode fallback, detects a changed target before native input,
+and retains the exact Unicode transcript). The injected reader prevents these tests from changing
+the user's system clipboard or inserting text into a real foreground application.
+
+Windows tests passed: 27; full deterministic suite passed: 81 (Core 24, App 13, providers 17,
+Windows 27). Release build passed with zero warnings/errors and self-contained `win-x64` publish
+passed. Commands and the observed real incident are recorded in [dictation-diagnostics.md](dictation-diagnostics.md).
+Live dictation against the offending clipboard and successful native insertion in the user's
+target remain pending; this evidence does not complete IT-CLIP-001/IT-PASTE-001 or the app matrix.

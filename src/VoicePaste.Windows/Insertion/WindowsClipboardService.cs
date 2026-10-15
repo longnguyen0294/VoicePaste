@@ -1,9 +1,11 @@
 using System.Runtime.InteropServices;
+using System.Runtime.Serialization;
 using System.Windows;
 using VoicePaste.Core;
 using WpfClipboard = System.Windows.Clipboard;
 using WpfDataFormats = System.Windows.DataFormats;
 using WpfDataObject = System.Windows.DataObject;
+using WpfIDataObject = System.Windows.IDataObject;
 
 namespace VoicePaste.Windows.Insertion;
 
@@ -18,6 +20,16 @@ public sealed partial class WindowsClipboardService : IDisposable
     private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(40);
     private const int MaximumAttempts = 5;
     private readonly StaDispatcher _dispatcher = new();
+    private readonly Func<WpfIDataObject?> _readClipboard;
+
+    public WindowsClipboardService() : this(WpfClipboard.GetDataObject)
+    {
+    }
+
+    internal WindowsClipboardService(Func<WpfIDataObject?> readClipboard)
+    {
+        _readClipboard = readClipboard;
+    }
 
     public async Task<OperationResult<ClipboardTransaction>> PlaceTranscriptAsync(
         string transcript,
@@ -25,17 +37,20 @@ public sealed partial class WindowsClipboardService : IDisposable
     {
         try
         {
+            SessionDiagnostics.Write("clipboard.snapshot_begin");
             var snapshotResult = await InvokeWithRetryAsync(
-                    CaptureSnapshot,
+                    () => CaptureSnapshot(_readClipboard()),
                     cancellationToken)
                 .ConfigureAwait(false);
             if (snapshotResult is OperationFailure<ClipboardSnapshot> failure)
             {
+                SessionDiagnostics.Write("clipboard.snapshot_failed", error: failure.Error);
                 return OperationResult.Failure<ClipboardTransaction>(failure.Error);
             }
 
             var snapshot = ((OperationSuccess<ClipboardSnapshot>)snapshotResult).Value;
             var token = Guid.NewGuid();
+            SessionDiagnostics.Write("clipboard.write_begin", $"SnapshotBytes={snapshot.SizeBytes}");
             var lease = await InvokeWithRetryAsync(
                     () => WriteTranscript(transcript, token, snapshot.SizeBytes),
                     cancellationToken)
@@ -44,6 +59,7 @@ public sealed partial class WindowsClipboardService : IDisposable
         }
         catch (ClipboardAccessException exception)
         {
+            SessionDiagnostics.Write("clipboard.access_exhausted", exception: exception);
             return OperationResult.Failure<ClipboardTransaction>(Busy(exception.DiagnosticCode));
         }
     }
@@ -54,10 +70,12 @@ public sealed partial class WindowsClipboardService : IDisposable
     {
         try
         {
-            return await InvokeWithRetryAsync(
+            var restored = await InvokeWithRetryAsync(
                     () => RestoreIfOwned(transaction),
                     cancellationToken)
                 .ConfigureAwait(false);
+            SessionDiagnostics.Write("clipboard.restore_result", $"Restored={restored}");
+            return restored;
         }
         catch (Exception exception) when (
             exception is ClipboardAccessException or
@@ -66,6 +84,7 @@ public sealed partial class WindowsClipboardService : IDisposable
             InvalidOperationException or
             ObjectDisposedException)
         {
+            SessionDiagnostics.Write("clipboard.restore_failed", exception: exception);
             return false;
         }
     }
@@ -84,6 +103,7 @@ public sealed partial class WindowsClipboardService : IDisposable
             }
             catch (Exception exception) when (exception is COMException or ExternalException)
             {
+                SessionDiagnostics.Write("clipboard.retry", $"Attempt={attempt} MaximumAttempts={MaximumAttempts}", exception: exception);
                 lastException = exception;
                 if (attempt < MaximumAttempts)
                 {
@@ -95,9 +115,8 @@ public sealed partial class WindowsClipboardService : IDisposable
         throw new ClipboardAccessException(lastException?.GetType().Name ?? "clipboard_locked");
     }
 
-    private static OperationResult<ClipboardSnapshot> CaptureSnapshot()
+    internal static OperationResult<ClipboardSnapshot> CaptureSnapshot(WpfIDataObject? dataObject)
     {
-        var dataObject = WpfClipboard.GetDataObject();
         if (dataObject is null)
         {
             return OperationResult.Success(new ClipboardSnapshot(
@@ -105,27 +124,31 @@ public sealed partial class WindowsClipboardService : IDisposable
                 0));
         }
 
-        var values = new List<KeyValuePair<string, object?>>();
-        foreach (var format in dataObject.GetFormats(autoConvert: false))
+        try
         {
-            try
+            var values = new List<KeyValuePair<string, object?>>();
+            foreach (var format in dataObject.GetFormats(autoConvert: false))
             {
                 values.Add(new KeyValuePair<string, object?>(
                     format,
                     dataObject.GetData(format, autoConvert: false)));
             }
-            catch (Exception exception) when (
-                exception is COMException or ExternalException or InvalidOperationException)
-            {
-                return OperationResult.Failure<ClipboardSnapshot>(new OperationError(
-                    ErrorCategory.ClipboardBusy,
-                    "clipboard.snapshot_unavailable",
-                    IsRetryable: true,
-                    exception.GetType().Name));
-            }
-        }
 
-        return ClipboardSnapshotPolicy.Create(values);
+            return ClipboardSnapshotPolicy.Create(values);
+        }
+        catch (Exception exception) when (
+            exception is COMException or ExternalException or InvalidOperationException or
+                NotSupportedException or SerializationException)
+        {
+            // WPF may deserialize application-specific clipboard objects. If that is unsupported
+            // or malformed, abandon the entire snapshot before writing anything to the clipboard.
+            SessionDiagnostics.Write("clipboard.snapshot_read_failed", exception: exception);
+            return OperationResult.Failure<ClipboardSnapshot>(new OperationError(
+                ErrorCategory.ClipboardBusy,
+                "clipboard.snapshot_unavailable",
+                IsRetryable: true,
+                exception.GetType().Name));
+        }
     }
 
     private static ClipboardLease WriteTranscript(string transcript, Guid token, long snapshotSize)

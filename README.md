@@ -122,6 +122,19 @@ Launch the published application:
 - Persistent transcript history is outside the current MVP, and temporary recording resources are
   deleted during normal cleanup paths.
 
+## Troubleshooting repeated dictation failures
+
+For builds with session diagnostics, logs are written in the background to
+`%LOCALAPPDATA%\VoicePaste\logs\application.log`, with one rotated `application.previous.log`
+at 1 MiB. Each session records its ID, processing stages, errors, cleanup outcomes, and return to
+Idle. Default logs exclude audio, transcript text, clipboard contents, credentials, exception
+messages, and file paths.
+
+If dictation fails repeatedly, exit VoicePaste from its tray menu and reopen the latest build.
+Record the failure time and whether it happened when pressing or releasing the hotkey. Preserve
+both application log files before further testing rotates them. See
+[the investigation and diagnostic guide](specs/dictation-diagnostics.md) for what to inspect.
+
 ## Project layout
 
 - [`src/VoicePaste.Core`](src/VoicePaste.Core) — provider-neutral contracts, policies, and dictation

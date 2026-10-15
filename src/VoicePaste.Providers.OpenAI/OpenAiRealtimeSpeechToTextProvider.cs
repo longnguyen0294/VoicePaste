@@ -72,6 +72,7 @@ public sealed class OpenAiRealtimeSpeechToTextProvider : IStreamingSpeechToTextP
         }
         catch (Exception exception)
         {
+            DiagnosticLog.LogException("realtime.credential_read_failed", exception);
             return OperationResult.Failure<IStreamingSpeechToTextSession>(new OperationError(
                 ErrorCategory.AuthenticationFailed,
                 "provider.credential_unavailable",
@@ -343,6 +344,7 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
         catch (OperationCanceledException) when (
             responseTimeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
+            DiagnosticLog.LogMessage("realtime.completion_interrupted", $"SocketState={_webSocket.State} HasTranscript={HasTranscript()}");
             if (HasTranscript())
             {
                 return CreateSuccessfulOutput();
@@ -357,6 +359,7 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
         catch (OperationCanceledException) when (
             _sessionCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
+            DiagnosticLog.LogMessage("realtime.completion_interrupted", $"SocketState={_webSocket.State} HasTranscript={HasTranscript()}");
             if (HasTranscript())
             {
                 return CreateSuccessfulOutput();
@@ -370,6 +373,8 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
         }
         catch (Exception exception) when (exception is WebSocketException or IOException)
         {
+            DiagnosticLog.LogMessage("realtime.completion_interrupted", $"SocketState={_webSocket.State} HasTranscript={HasTranscript()}");
+            DiagnosticLog.LogException("realtime.completion_transport_failed", exception);
             if (HasTranscript())
             {
                 return CreateSuccessfulOutput();
@@ -404,8 +409,9 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
                     .ConfigureAwait(false);
             }
         }
-        catch
+        catch (Exception exception)
         {
+            DiagnosticLog.LogException("realtime.cancel_failed", exception);
             // Best-effort cancellation must not replace the user's cancellation result.
         }
         finally
@@ -443,6 +449,7 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
                 }
                 catch (TimeoutException)
                 {
+                    DiagnosticLog.LogMessage("realtime.dispose_receive_timeout", $"SocketState={_webSocket.State}");
                     _webSocket.Abort();
                     await _receiveTask
                         .WaitAsync(_options.ShutdownTimeout ?? DefaultShutdownTimeout)
@@ -450,8 +457,9 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
                 }
             }
         }
-        catch
+        catch (Exception exception)
         {
+            DiagnosticLog.LogException("realtime.dispose_receive_failed", exception);
             // Background receiver shutdown is best effort during disposal.
         }
         finally
@@ -540,6 +548,7 @@ public sealed class OpenAiRealtimeSession : IStreamingSpeechToTextSession
         }
         catch (Exception exception)
         {
+            DiagnosticLog.LogException("realtime.receive_failed", exception);
             SetTransportFailure(exception.GetType().Name);
         }
     }

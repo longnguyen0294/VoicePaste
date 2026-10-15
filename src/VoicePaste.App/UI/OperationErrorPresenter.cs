@@ -25,6 +25,14 @@ public static class OperationErrorPresenter
                 "The microphone did not finish stopping. VoicePaste reset the recording; try again.",
             "audio.flush_timed_out" =>
                 "The recording could not be saved in time. VoicePaste reset the recording; try again.",
+            "session.start_failed" =>
+                "VoicePaste could not start recording. If this repeats, exit from the tray and reopen VoicePaste. Details are in the local logs.",
+            "session.unexpected_error" =>
+                "VoicePaste encountered an error while processing dictation. If this repeats, exit from the tray and reopen VoicePaste. Details are in the local logs.",
+            "app.unexpected_error" =>
+                "VoicePaste encountered an unexpected error. If this repeats, exit from the tray and reopen VoicePaste. Details are in the local logs.",
+            "session.cleanup_failed" =>
+                "Dictation ended, but a recording resource could not be released. Exit from the tray and reopen VoicePaste. Details are in the local logs.",
             "target.voicepaste_window" =>
                 "Switch to an editable field in another application, then hold Right Ctrl to dictate.",
             _ => operationError.Category switch

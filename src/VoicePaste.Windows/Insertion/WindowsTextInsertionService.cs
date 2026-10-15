@@ -32,6 +32,7 @@ public sealed partial class WindowsTextInsertionService : ITextInsertionService,
         TargetWindow target,
         CancellationToken cancellationToken)
     {
+        SessionDiagnostics.Write("paste.target_validate");
         var targetResult = _targetValidator.ValidateForPaste(target);
         if (targetResult is OperationFailure<Unit> targetFailure)
         {
@@ -76,11 +77,13 @@ public sealed partial class WindowsTextInsertionService : ITextInsertionService,
 
             if (!SendPasteShortcut())
             {
+                var nativeError = Marshal.GetLastWin32Error();
+                SessionDiagnostics.Write("paste.send_input_failed", $"NativeError={nativeError}");
                 var error = new OperationError(
                     ErrorCategory.TargetUnavailable,
                     "paste.send_input_failed",
                     IsRetryable: true,
-                    new Win32Exception(Marshal.GetLastWin32Error()).NativeErrorCode.ToString(
+                    new Win32Exception(nativeError).NativeErrorCode.ToString(
                         CultureInfo.InvariantCulture));
                 return RetainAndFail(text, error);
             }
@@ -105,6 +108,7 @@ public sealed partial class WindowsTextInsertionService : ITextInsertionService,
 
     private OperationResult<InsertionOutcome> RetainAndFail(string text, OperationError operationError)
     {
+        SessionDiagnostics.Write("paste.failed", error: operationError);
         _fallbackStore.Retain(text, operationError);
         return OperationResult.Failure<InsertionOutcome>(operationError);
     }
@@ -114,6 +118,7 @@ public sealed partial class WindowsTextInsertionService : ITextInsertionService,
         TargetWindow target,
         CancellationToken cancellationToken)
     {
+        SessionDiagnostics.Write("paste.unicode_fallback");
         cancellationToken.ThrowIfCancellationRequested();
         return await Task.Run(() =>
         {

@@ -1,4 +1,5 @@
 using System.Windows.Threading;
+using VoicePaste.Core;
 
 namespace VoicePaste.Windows.Insertion;
 
@@ -24,6 +25,7 @@ internal sealed class StaDispatcher : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var dispatcher = await _ready.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        SessionDiagnostics.Write("clipboard.dispatcher_invoke", $"ThreadAlive={_thread.IsAlive} ShutdownStarted={dispatcher.HasShutdownStarted} ShutdownFinished={dispatcher.HasShutdownFinished}");
         var operation = dispatcher.InvokeAsync(action, DispatcherPriority.Send, cancellationToken);
         return await operation.Task.ConfigureAwait(false);
     }
@@ -47,8 +49,10 @@ internal sealed class StaDispatcher : IDisposable
     private void Run()
     {
         var dispatcher = Dispatcher.CurrentDispatcher;
+        SessionDiagnostics.Write("clipboard.dispatcher_start");
         _ready.TrySetResult(dispatcher);
         Dispatcher.Run();
+        SessionDiagnostics.Write("clipboard.dispatcher_exit");
     }
 }
 

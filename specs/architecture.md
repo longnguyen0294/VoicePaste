@@ -125,6 +125,8 @@ VoicePaste.Providers.* ───────┘
    is delayed-rendered, unsupported, locked after bounded retries, or too large, the insertion service
    revalidates the target and sends direct Unicode input without modifying the clipboard. If that
    fallback fails, the transcript remains available for manual copy/retry.
+   WPF format enumeration or object deserialization failures, including unsupported serializers,
+   abandon the whole snapshot as `clipboard.snapshot_unavailable` before writing any clipboard data.
 10. After a bounded paste-settle interval, clipboard restoration occurs only if the private token,
     sequence number, and owner identity still match. User or third-party clipboard changes always win.
 11. Temporary audio and session-owned resources are released. On a retryable transcription failure,
@@ -237,7 +239,13 @@ application exit, and next-start cleanup all release the lease deterministically
 ## 11. Observability and performance
 
 Record privacy-safe metrics for state durations, error categories, cleanup results, and resource use.
-Do not record transcript or raw audio content. Verification targets are:
+Do not record transcript or raw audio content. Session-correlated stage/error/cleanup diagnostics
+are implemented by `SessionDiagnostics`, backed by a bounded background queue and a rotating
+`application.log`/`application.previous.log` pair in the current user's local app-data logs directory.
+Provider, capture, clipboard/STA, and app action diagnostics use the same writer. Exception metadata
+includes type/HResult and method/line frames, excluding messages, paths, payloads, and secrets.
+See [dictation diagnostics](dictation-diagnostics.md) for recovery findings, exact evidence, and the
+next-incident workflow. Verification targets are:
 
 - listening feedback within 150 ms under normal load;
 - for a 10-second recording, release-to-paste latency at most 5 seconds p50 and 8 seconds p95 under the

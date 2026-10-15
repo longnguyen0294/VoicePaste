@@ -314,6 +314,84 @@ public sealed class DictationSessionCoordinatorTests
         Assert.IsTrue(await coordinator.StartListeningAsync());
     }
 
+    [TestMethod]
+    public async Task UtState013RealtimeFailureAfterSuccessfulStopDisposesReturnedRecording()
+    {
+        var streaming = new FakeStreamingSession("unused", failAudioSend: true);
+        var fixture = new CoordinatorFixture
+        {
+            StreamingProvider = new FakeStreamingProvider(streaming),
+            Settings = AppSettings.Default with { DictationMode = DictationMode.Realtime },
+        };
+        fixture.Audio.OnStop = async token =>
+        {
+            fixture.Audio.EmitData(new byte[160]);
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            }
+            catch (OperationCanceledException)
+            {
+                // Return a successfully stopped recording as the realtime pump fails.
+            }
+        };
+        await using var coordinator = fixture.CreateCoordinator();
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+        await coordinator.CompleteAsync().WaitAsync(TimeSpan.FromSeconds(3));
+
+        Assert.IsTrue(fixture.Audio.Content.Disposed);
+        Assert.AreEqual(DictationSessionState.Idle, coordinator.State);
+        Assert.AreEqual(0, fixture.Insertion.CallCount);
+        Assert.IsTrue(fixture.Status.States.Any(entry => entry.Error?.UserMessageKey == "provider.audio_stream_failed"));
+        fixture.Audio.OnStop = null;
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+    }
+
+    [TestMethod]
+    public async Task UtState014RepeatedUnexpectedStopFailuresDoNotPoisonNextSession()
+    {
+        var fixture = new CoordinatorFixture();
+        await using var coordinator = fixture.CreateCoordinator();
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            fixture.Audio.StopException = new InvalidOperationException("sensitive simulated driver message");
+            Assert.IsTrue(await coordinator.StartListeningAsync());
+            await coordinator.CompleteAsync();
+            Assert.AreEqual(DictationSessionState.Idle, coordinator.State);
+        }
+
+        Assert.AreEqual(3, fixture.Audio.CancelCount);
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+        await coordinator.CompleteAsync();
+        Assert.AreEqual(1, fixture.Insertion.CallCount);
+        Assert.IsTrue(fixture.Audio.Content.Disposed);
+        Assert.AreEqual(DictationSessionState.Idle, coordinator.State);
+    }
+
+    [TestMethod]
+    public async Task UtState015UnexpectedRealtimeStartupFailureRecoversBeforeSessionOwnership()
+    {
+        var streaming = new FakeStreamingProvider(new FakeStreamingSession("recovered"))
+        {
+            StartException = new InvalidOperationException("sensitive startup message"),
+        };
+        var fixture = new CoordinatorFixture
+        {
+            StreamingProvider = streaming,
+            Settings = AppSettings.Default with { DictationMode = DictationMode.Realtime },
+        };
+        await using var coordinator = fixture.CreateCoordinator();
+        Assert.IsFalse(await coordinator.StartListeningAsync());
+        Assert.AreEqual(0, fixture.Audio.StartCount);
+        Assert.AreEqual(DictationSessionState.Idle, coordinator.State);
+        Assert.IsTrue(fixture.Status.States.Any(entry => entry.Error?.UserMessageKey == "session.start_failed"));
+
+        streaming.StartException = null;
+        Assert.IsTrue(await coordinator.StartListeningAsync());
+        await coordinator.CompleteAsync();
+        Assert.AreEqual("recovered", fixture.Insertion.LastText);
+    }
+
     private sealed class CoordinatorFixture
     {
         public FakeAudioCapture Audio { get; } = new();
@@ -370,6 +448,8 @@ public sealed class DictationSessionCoordinatorTests
 
         public Exception? StopException { get; set; }
 
+        public Func<CancellationToken, Task>? OnStop { get; set; }
+
         public Task<OperationResult<Unit>> StartAsync(
             string microphoneId,
             CancellationToken cancellationToken)
@@ -387,21 +467,25 @@ public sealed class DictationSessionCoordinatorTests
             return Task.FromResult(OperationResult.Success(Unit.Value));
         }
 
-        public Task<OperationResult<AudioRecording>> StopAsync(CancellationToken cancellationToken)
+        public async Task<OperationResult<AudioRecording>> StopAsync(CancellationToken cancellationToken)
         {
             if (StopException is not null)
             {
                 var exception = StopException;
                 StopException = null;
-                return Task.FromException<OperationResult<AudioRecording>>(exception);
+                throw exception;
             }
 
+            if (OnStop is not null)
+            {
+                await OnStop(cancellationToken);
+            }
             _active = false;
-            return Task.FromResult(OperationResult.Success(new AudioRecording(
+            return OperationResult.Success(new AudioRecording(
                 "test-recording",
                 Content,
                 DateTimeOffset.UtcNow,
-                null)));
+                null));
         }
 
         public Task CancelAsync(CancellationToken cancellationToken)
@@ -542,6 +626,8 @@ public sealed class DictationSessionCoordinatorTests
 
     private sealed class FakeStreamingProvider(IStreamingSpeechToTextSession session) : IStreamingSpeechToTextProvider
     {
+        public Exception? StartException { get; set; }
+
         public string ProviderId => "fake-streaming";
 
         public SpeechProviderCapabilities Capabilities { get; } = new(
@@ -555,7 +641,9 @@ public sealed class DictationSessionCoordinatorTests
         public Task<OperationResult<IStreamingSpeechToTextSession>> StartSessionAsync(
             TranscriptionOptions options,
             CancellationToken cancellationToken) =>
-            Task.FromResult(OperationResult.Success(session));
+            StartException is null
+                ? Task.FromResult(OperationResult.Success(session))
+                : Task.FromException<OperationResult<IStreamingSpeechToTextSession>>(StartException);
     }
 
     private sealed class FakeInsertion : ITextInsertionService

@@ -86,3 +86,19 @@ Includes VP-015 through VP-018.
 - A provider-dependent task cannot be completed with only a fake provider.
 - A passing unit test does not replace required Windows compatibility evidence.
 - Failed or pending checks remain visible in traceability and release reporting.
+
+## 5. Repeated-failure diagnostic slice (2026-10-02)
+
+VP-009/012/013 now include startup recovery before session ownership, disposal of audio returned
+just before realtime failure, per-session settings snapshots, session-correlated stage/cleanup
+diagnostics, and actionable restart guidance. VP-007/008 contribute provider/clipboard/STA traces.
+The plan, requirement-to-symbol/test map, verified commands, incident facts, and pending manual
+checks are in [dictation-diagnostics.md](dictation-diagnostics.md). No new product scope was added.
+
+## 6. Clipboard deserialization recovery (2026-10-06)
+
+VP-008/012 handle WPF unsupported or malformed object deserialization during clipboard snapshotting
+as a typed clipboard failure so the existing Unicode/manual-copy fallback can run. Repeated STA
+read failures, partial snapshots, and target changes before fallback receive regression tests.
+The incident, exact requirement/symbol mappings, implementation plan, and verification status are
+in [dictation-diagnostics.md](dictation-diagnostics.md#plan-clipboard-deserialization-recovery-2026-10-06).
